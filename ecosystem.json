@@ -1,0 +1,18 @@
+{
+  "apps" : [
+    {
+      "name"      : "funding-curve-backend",
+      "script"    : "dist/src/main.js",
+      "args"      : "",   
+      "instances" : 1,
+      "exec_mode" : "fork",
+      "watch"     : false,
+      "error_file": "logs/funding-curve-backend.stderr.log",
+      "out_file"  : "logs/funding-curve-backend.log",
+      "mergeLogs" : false,
+      "env": {
+        "NODE_ENV": "production"
+      }
+    }
+  ]
+}
