@@ -2,7 +2,7 @@
   "apps" : [
     {
       "name"      : "funding-curve-backend",
-      "script"    : "dist/src/main.js",
+      "script"    : "dist/main.js",
       "args"      : "",   
       "instances" : 1,
       "exec_mode" : "fork",
