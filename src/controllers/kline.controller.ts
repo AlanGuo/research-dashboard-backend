@@ -1,7 +1,7 @@
 import { Controller, Get, Query, Param } from '@nestjs/common';
 import { TradingViewService } from '../services/tradingview.service';
 
-@Controller('api/kline')
+@Controller('v1/kline')
 export class KlineController {
   constructor(private readonly tradingViewService: TradingViewService) {}
 

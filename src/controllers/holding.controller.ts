@@ -1,7 +1,7 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { HoldingService } from '../services/holding.service';
 
-@Controller('api/holding')
+@Controller('v1/holding')
 export class HoldingController {
   constructor(private readonly holdingService: HoldingService) {}
 

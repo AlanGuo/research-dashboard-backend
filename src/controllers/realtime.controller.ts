@@ -1,7 +1,7 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Controller, Get, Param } from '@nestjs/common';
 import { RealtimeService } from '../services/realtime.service';
 
-@Controller('api/realtime')
+@Controller('v1/realtime')
 export class RealtimeController {
   constructor(private readonly realtimeService: RealtimeService) {}
 
