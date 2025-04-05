@@ -128,10 +128,10 @@ export class TradingViewService implements OnModuleDestroy {
       return `BINANCE:${upperSymbol}`;
     }
     
-    // For stocks, default to NASDAQ
-    if (!/[:\\.]/.test(upperSymbol)) {
-      return `NASDAQ:${upperSymbol}`;
-    }
+    // // For stocks, default to NASDAQ
+    // if (!/[:\\.]/.test(upperSymbol)) {
+    //   return `NASDAQ:${upperSymbol}`;
+    // }
     
     // Return as is if it has other formatting
     return upperSymbol;
