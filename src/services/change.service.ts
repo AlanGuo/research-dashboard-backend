@@ -2,18 +2,18 @@ import { Injectable } from '@nestjs/common';
 import { NotionService } from './notion.service';
 
 @Injectable()
-export class RealtimeService {
+export class ChangeService {
   constructor(private readonly notionService: NotionService) {}
 
   /**
-   * Get realtime funding data for a specific user
+   * Get change data for a specific user
    * @param user User identifier (e.g., 'pumpkin')
-   * @returns Processed realtime funding data sorted by date in descending order
+   * @returns Processed change data sorted by date in descending order
    */
-  async getRealtimeData(user: string) {
+  async getChangeData(user: string) {
     try {
-      // Get data from Notion's funding_real_time database, sorted by '日期' in descending order
-      const data = await this.notionService.getDatabaseData(user, 'funding_real_time', '日期');
+      // Get data from Notion's funding_change database
+      const data = await this.notionService.getDatabaseData(user, 'funding_change');
       
       // Process and transform the data as needed
       const processedData = this.notionService.processNotionData(data);
@@ -24,7 +24,7 @@ export class RealtimeService {
         timestamp: new Date().toISOString(),
       };
     } catch (error) {
-      console.error(`Error fetching realtime data for user ${user}:`, error);
+      console.error(`Error fetching change data for user ${user}:`, error);
       return {
         success: false,
         error: error.message,
