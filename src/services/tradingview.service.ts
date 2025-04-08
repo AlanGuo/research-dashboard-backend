@@ -17,9 +17,10 @@ export class TradingViewService implements OnModuleDestroy {
    * @param symbol Symbol to fetch data for (e.g., 'BINANCE:BTCUSDT')
    * @param interval Time interval (e.g., '1D', '4H', '1H', '15', '5')
    * @param limit Number of bars/candles to fetch
+   * @param from Timestamp to start fetching from (optional), 7 days ago: (Date.now() / 1000) - 86400 * 7
    * @returns Candlestick data
    */
-  async getKlineData(symbol: string, interval: string, limit: number = 100): Promise<any> {
+  async getKlineData(symbol: string, interval: string, limit: number = 100, from?: number): Promise<any> {
     try {
       // Format the symbol if needed
       const formattedSymbol = this.formatSymbol(symbol);
@@ -28,54 +29,76 @@ export class TradingViewService implements OnModuleDestroy {
       const tvInterval = this.mapToTVInterval(interval);
       
       // Create a unique chart ID for this request
-      const chartId = `${formattedSymbol}_${tvInterval}_${Date.now()}`;
-      
-      // Create a new chart session
+      const chartId = `${formattedSymbol}_${tvInterval}_${new Date().getTime()}`;
+      if (this.charts.has(chartId)) {
+        this.cleanupChart(chartId);
+      }
       const chart = new this.client.Session.Chart();
       this.charts.set(chartId, chart);
       
+      const startTime = new Date().getTime();
       // Return a promise that resolves when the data is loaded
       return new Promise((resolve, reject) => {
+        let timeoutId = undefined;
+        const resolver = (data) => {
+          if (timeoutId) {
+            clearTimeout(timeoutId)
+          }
+          resolve(data);
+        }
         // Set up error handler
         chart.onError((...err: any[]) => {
           console.error(`Chart error for ${formattedSymbol}:`, ...err);
-          reject(new Error(`Failed to fetch data for ${formattedSymbol}: ${err.join(' ')}`))
           this.cleanupChart(chartId);
+          reject(new Error(`Failed to fetch data for ${formattedSymbol}: ${err.join(' ')}`))
         });
         
         // Set up symbol loaded handler
-        chart.onSymbolLoaded(() => {
-          console.log(`Market "${chart.infos.description}" loaded!`);
-          
-          // Wait for data to be available
-          setTimeout(() => {
-            try {
-              // Get the periods (candles) data
-              const periods = chart.periods || [];
-              
-              // Format the response
-              const result = this.transformTVData(periods, formattedSymbol, tvInterval, chart.infos);
-              
-              // Clean up the chart session
-              this.cleanupChart(chartId);
-              
-              // Resolve with the data
-              resolve(result);
-            } catch (error) {
-              console.error(`Error processing data for ${formattedSymbol}:`, error);
-              reject(error);
-              this.cleanupChart(chartId);
-            }
-          }, 2000); // Wait 2 seconds for data to be available
+        chart.onUpdate(() => {
+          // console.log(`Market "${chart.infos.description}" loaded!`);
+          try {
+            // Get the periods (candles) data
+            const periods = chart.periods || [];
+            // Format the response
+            const result = this.transformTVData(periods, formattedSymbol, tvInterval, chart.infos);
+            
+            // Resolve with the data
+            resolver(result);
+            this.cleanupChart(chartId);
+          } catch (error) {
+            this.cleanupChart(chartId);
+            console.error(`Error processing data for ${formattedSymbol}:`, error);
+            reject(error);
+          }
         });
-        
         // Set the market and timeframe
-        chart.setMarket(formattedSymbol, {
+        const marketOptions: any = {
           timeframe: tvInterval,
           range: limit,
           // 调整股息数据：前复权
           adjustment: "dividends"
-        });
+        };
+        
+        // 正确使用from参数，如果提供了from，则设置为from
+        if (from) {
+          marketOptions.to = from;
+        }
+        
+        // console.log(`Setting market for ${formattedSymbol} with options:`, marketOptions);
+        chart.setMarket(formattedSymbol, marketOptions);
+
+        // 超时报错
+        const timeoutResolver = () => {
+          const now = new Date().getTime()
+          if (now - startTime > 10 * 1000) {
+            // 超时
+            this.cleanupChart(chartId);
+            reject(new Error(`load ${formattedSymbol} chart timeout`))
+          } else {
+            timeoutId = setTimeout(timeoutResolver, 1000)
+          }
+        }
+        timeoutId = setTimeout(timeoutResolver, 1000)
       });
     } catch (error) {
       console.error(`Error fetching K-line data for ${symbol}:`, error);
@@ -123,16 +146,6 @@ export class TradingViewService implements OnModuleDestroy {
       return upperSymbol;
     }
     
-    // If it's a cryptocurrency pair, default to Binance
-    if (upperSymbol.includes('USD') || upperSymbol.includes('BTC') || upperSymbol.includes('ETH')) {
-      return `BINANCE:${upperSymbol}`;
-    }
-    
-    // // For stocks, default to NASDAQ
-    // if (!/[:\\.]/.test(upperSymbol)) {
-    //   return `NASDAQ:${upperSymbol}`;
-    // }
-    
     // Return as is if it has other formatting
     return upperSymbol;
   }
@@ -146,11 +159,8 @@ export class TradingViewService implements OnModuleDestroy {
    * @returns Transformed data
    */
   private transformTVData(periods: any[], symbol: string, interval: string, marketInfo: any) {
-    // Sort periods by time (oldest first)
-    const sortedPeriods = [...periods].sort((a, b) => a.time - b.time);
-    
     // Map periods to candles format
-    const candles = sortedPeriods.map(period => ({
+    const candles = periods.map(period => ({
       timestamp: period.time * 1000, // Convert to milliseconds
       datetime: new Date(period.time * 1000).toISOString(),
       open: period.open,
