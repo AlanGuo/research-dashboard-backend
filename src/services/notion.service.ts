@@ -16,21 +16,16 @@ export class NotionService {
    * Get database data from Notion based on user and database type
    * @param user User identifier (e.g., 'pumpkin')
    * @param databaseType Type of database to query (e.g., 'funding_base_info', 'funding_real_time')
-   * @param sortField Optional field to sort by (default is '日期' for realtime data)
+   * @param sortField Optional field to sort by
    * @returns Database query results
    */
-  async getDatabaseData(user: string, databaseType: string, sortField?: string): Promise<any> {
+  async getDatabaseData(user: string, databaseType: string, sortField?: string, direction?: string): Promise<any> {
     try {
       // Get the database ID from config based on user and database type
       const databaseId = this.configService.get<string>(`notion.user.${user}.${databaseType}`);
       
       if (!databaseId) {
         throw new Error(`Database ID not found for user ${user} and type ${databaseType}`);
-      }
-
-      // Set default sort field for funding_real_time database
-      if (databaseType === 'funding_real_time' && !sortField) {
-        sortField = '日期';
       }
 
       // Prepare query parameters
@@ -43,7 +38,7 @@ export class NotionService {
         queryParams.sorts = [
           {
             property: sortField,
-            direction: 'descending',
+            direction: direction || 'descending',
           },
         ];
       }

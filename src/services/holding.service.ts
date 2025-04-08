@@ -15,7 +15,7 @@ export class HoldingService {
   async getHolding(user: string, status?: string, except?: string) {
     try {
       // Get data from Notion's funding_holding database
-      const data = await this.notionService.getDatabaseData(user, 'funding_holding');
+      const data = await this.notionService.getDatabaseData(user, 'funding_holding', '进场日期', 'descending');
       
       // Process and transform the data as needed
       let processedData = this.notionService.processNotionData(data);
