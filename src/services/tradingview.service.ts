@@ -28,8 +28,8 @@ export class TradingViewService implements OnModuleDestroy {
       // Map the interval to TradingView format
       const tvInterval = this.mapToTVInterval(interval);
       
-      // Create a unique chart ID for this request
-      const chartId = `${formattedSymbol}_${tvInterval}_${new Date().getTime()}`;
+      // Create a unique chart ID for this request with a random suffix
+      const chartId = `${formattedSymbol}_${tvInterval}_${Math.random().toString(36).slice(2)}`;
       if (this.charts.has(chartId)) {
         this.cleanupChart(chartId);
       }
