@@ -17,9 +17,11 @@ export class NotionService {
    * @param user User identifier (e.g., 'pumpkin')
    * @param databaseType Type of database to query (e.g., 'funding_base_info', 'funding_real_time')
    * @param sortField Optional field to sort by
+   * @param direction Optional direction to sort by
+   * @param filter Optional filter to apply to the query
    * @returns Database query results
    */
-  async getDatabaseData(user: string, databaseType: string, sortField?: string, direction?: string): Promise<any> {
+  async getDatabaseData(user: string, databaseType: string, sortField?: string, direction?: string, filter?: any): Promise<any> {
     try {
       // Get the database ID from config based on user and database type
       const databaseId = this.configService.get<string>(`notion.user.${user}.${databaseType}`);
@@ -43,7 +45,12 @@ export class NotionService {
         ];
       }
 
-      // Query the database with sorting
+      // Add filter if specified
+      if (filter) {
+        queryParams.filter = filter;
+      }
+
+      // Query the database with sorting and filtering
       const response = await this.notionClient.databases.query(queryParams);
 
       return response.results;
