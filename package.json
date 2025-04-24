@@ -1,7 +1,7 @@
 {
-  "name": "funding-curve-backend",
+  "name": "research-dashboard-backend",
   "version": "0.0.1",
-  "description": "NestJS backend for funding curve application",
+  "description": "NestJS backend for research dashboard application",
   "author": "",
   "private": true,
   "license": "UNLICENSED",

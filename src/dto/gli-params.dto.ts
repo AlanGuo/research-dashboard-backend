@@ -35,7 +35,7 @@ export class GliParamsDto {
   @IsOptional()
   @IsBoolean()
   @Transform(({ value }: TransformFnParams) => value === 'true' || value === true)
-  other_active?: boolean = true;
+  other_active?: boolean = false;
 
   @IsOptional()
   @IsBoolean()

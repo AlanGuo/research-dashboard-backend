@@ -204,58 +204,43 @@ export class GliService {
       timestamps.push(date.getTime());
     }
     
-    // 同时收集所有数据源中的时间戳，以便我们可以完整映射所有数据
-    const allSourceTimestamps = new Set<number>();
-    dataMap.forEach(data => {
-      if (data && data.candles) {
-        data.candles.forEach(candle => {
-          allSourceTimestamps.add(candle.timestamp);
-        });
-      }
-    });
+    // 创建对齐的数据点
+    const alignedData = [];
     
-    // 为每个符号创建一个最新数据缓存
-    const latestDataCache: Record<string, any> = {};
-    
-    // 预处理所有数据源，为每个符号找到最早的数据点
-    // 这样即使在我们的时间范围开始时没有数据，也可以使用最早的数据
+    // 预处理所有数据源，为每个符号将数据按时间戳排序
+    const sortedCandlesMap = new Map<string, any[]>();
     dataMap.forEach((data, symbol) => {
       if (data && data.candles && data.candles.length > 0) {
-        // 按时间戳排序
-        const sortedCandles = [...data.candles].sort((a, b) => a.timestamp - b.timestamp);
-        // 初始化缓存为最早的数据点
-        latestDataCache[symbol] = sortedCandles[0].close;
+        // 按时间戳排序（从新到旧）
+        const sortedCandles = [...data.candles].sort((a, b) => b.timestamp - a.timestamp);
+        sortedCandlesMap.set(symbol, sortedCandles);
       }
     });
     
-    // 创建对齐的数据点
-    const alignedData = timestamps.map(timestamp => {
+    // 对每个时间戳创建数据点
+    for (const timestamp of timestamps) {
       const dataPoint: any = { timestamp };
-      
-      // 添加日期时间
       dataPoint.datetime = new Date(timestamp).toISOString();
       
-      // 添加每个符号的数据
-      dataMap.forEach((data, symbol) => {
-        if (data && data.candles) {
-          // 尝试找到当前时间戳的数据
-          const candle = data.candles.find(c => c.timestamp === timestamp);
-          
-          if (candle) {
-            // 找到了数据，更新缓存并添加到数据点
-            latestDataCache[symbol] = candle.close;
-            dataPoint[symbol] = candle.close;
-          } else if (latestDataCache[symbol] !== undefined) {
-            // 没有找到数据，但有缓存的数据，使用缓存的数据
-            dataPoint[symbol] = latestDataCache[symbol];
-          }
+      // 为每个符号找到最接近的数据
+      sortedCandlesMap.forEach((sortedCandles, symbol) => {
+        // 找到小于等于当前时间戳的最新数据
+        // 这确保了我们使用的是当前时间戳或之前的最新数据
+        const latestCandle = sortedCandles.find(candle => candle.timestamp <= timestamp);
+        
+        if (latestCandle) {
+          // 使用最新的数据
+          dataPoint[symbol] = latestCandle.close;
+        } else if (sortedCandles.length > 0) {
+          // 如果没有找到小于等于当前时间戳的数据，但有其他数据，使用最早的数据
+          // 这种情况只会发生在时间范围的开始早于所有可用数据的情况
+          dataPoint[symbol] = sortedCandles[sortedCandles.length - 1].close;
         }
       });
       
-      return dataPoint;
-    });
+      alignedData.push(dataPoint);
+    }
     
-    // 数据已经是从新到旧排序的，不需要再次排序
     return alignedData;
   }
 
@@ -268,13 +253,17 @@ export class GliService {
    * @param symbolName 符号名称
    * @param exchangeRate 汇率
    * @param missingDataSymbols 缺失数据符号集合
+   * @param processed 处理后的数据点（可选）
+   * @param targetField 目标字段名（可选）
    * @returns 转换后的值
    */
   private getSymbolValueWithRate(
     dataPoint: any, 
     symbolName: string, 
     exchangeRate: number, 
-    missingDataSymbols: Set<string>
+    missingDataSymbols: Set<string>,
+    processed?: Partial<GliDataPoint>,
+    targetField?: string
   ): number {
     const value = dataPoint[symbolName];
     
@@ -286,8 +275,16 @@ export class GliService {
       }
     }
     
+    const convertedValue = (value || 0) * (exchangeRate || 1);
+    
+    // 如果提供了processed和targetField，保存原始数据
+    if (processed && targetField) {
+      processed[`raw_${targetField}`] = value || 0;
+      processed[targetField] = convertedValue;
+    }
+    
     // 返回带汇率转换的值
-    return (value || 0) * (exchangeRate || 1);
+    return convertedValue;
   }
   
   /**
@@ -323,6 +320,9 @@ export class GliService {
     
     // 设置值，如果需要汇率转换则应用汇率
     if (exchangeRate !== undefined) {
+      // 保存原始数据（未经汇率转换）
+      processed[`raw_${targetField}`] = value || 0;
+      // 设置汇率转换后的值
       processed[targetField] = (value || 0) * (exchangeRate || 1);
     } else {
       processed[targetField] = value || 0;
@@ -419,47 +419,47 @@ export class GliService {
         let otherCbTotal = 0;
         
         // 英国央行
-        const boe = this.getSymbolValueWithRate(dataPoint, 'GBCBBS', processed.gbpusd, missingDataSymbols);
+        const boe = this.getSymbolValueWithRate(dataPoint, 'GBCBBS', processed.gbpusd, missingDataSymbols, processed, 'boe');
         otherCbTotal += boe;
         
         // 加拿大央行
-        const boc = this.getSymbolValueWithRate(dataPoint, 'CACBBS', processed.cadusd, missingDataSymbols);
+        const boc = this.getSymbolValueWithRate(dataPoint, 'CACBBS', processed.cadusd, missingDataSymbols, processed, 'boc');
         otherCbTotal += boc;
         
         // 澳大利亚央行
-        const rba = this.getSymbolValueWithRate(dataPoint, 'AUCBBS', processed.audusd, missingDataSymbols);
+        const rba = this.getSymbolValueWithRate(dataPoint, 'AUCBBS', processed.audusd, missingDataSymbols, processed, 'rba');
         otherCbTotal += rba;
         
         // 印度央行
-        const rbi = this.getSymbolValueWithRate(dataPoint, 'INCBBS', processed.inrusd, missingDataSymbols);
+        const rbi = this.getSymbolValueWithRate(dataPoint, 'INCBBS', processed.inrusd, missingDataSymbols, processed, 'rbi');
         otherCbTotal += rbi;
         
         // 瑞士央行
-        const snb = this.getSymbolValueWithRate(dataPoint, 'CHCBBS', processed.chfusd, missingDataSymbols);
+        const snb = this.getSymbolValueWithRate(dataPoint, 'CHCBBS', processed.chfusd, missingDataSymbols, processed, 'snb');
         otherCbTotal += snb;
         
         // 俄罗斯央行
-        const cbr = this.getSymbolValueWithRate(dataPoint, 'RUCBBS', processed.rubusd, missingDataSymbols);
+        const cbr = this.getSymbolValueWithRate(dataPoint, 'RUCBBS', processed.rubusd, missingDataSymbols, processed, 'cbr');
         otherCbTotal += cbr;
         
         // 巴西央行
-        const bcb = this.getSymbolValueWithRate(dataPoint, 'BRCBBS', processed.brlusd, missingDataSymbols);
+        const bcb = this.getSymbolValueWithRate(dataPoint, 'BRCBBS', processed.brlusd, missingDataSymbols, processed, 'bcb');
         otherCbTotal += bcb;
         
         // 韩国央行
-        const bok = this.getSymbolValueWithRate(dataPoint, 'KRCBBS', processed.krwusd, missingDataSymbols);
+        const bok = this.getSymbolValueWithRate(dataPoint, 'KRCBBS', processed.krwusd, missingDataSymbols, processed, 'bok');
         otherCbTotal += bok;
         
         // 新西兰央行
-        const rbzn = this.getSymbolValueWithRate(dataPoint, 'NZCBBS', processed.audusd, missingDataSymbols);
+        const rbzn = this.getSymbolValueWithRate(dataPoint, 'NZCBBS', processed.audusd, missingDataSymbols, processed, 'rbzn');
         otherCbTotal += rbzn;
         
         // 瑞典央行
-        const sr = this.getSymbolValueWithRate(dataPoint, 'SECBBS', processed.sekusd, missingDataSymbols);
+        const sr = this.getSymbolValueWithRate(dataPoint, 'SECBBS', processed.sekusd, missingDataSymbols, processed, 'sr');
         otherCbTotal += sr;
         
         // 马来西亚央行
-        const bnm = this.getSymbolValueWithRate(dataPoint, 'MYCBBS', processed.myrusd, missingDataSymbols);
+        const bnm = this.getSymbolValueWithRate(dataPoint, 'MYCBBS', processed.myrusd, missingDataSymbols, processed, 'bnm');
         otherCbTotal += bnm;
         
         processed.other_cb_total = otherCbTotal;
@@ -486,43 +486,43 @@ export class GliService {
         let otherM2Total = 0;
         
         // 英国M2
-        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:GBM2', processed.gbpusd, missingDataSymbols);
+        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:GBM2', processed.gbpusd, missingDataSymbols, processed, 'gbm2');
         
         // 加拿大M2
-        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:CAM2', processed.cadusd, missingDataSymbols);
+        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:CAM2', processed.cadusd, missingDataSymbols, processed, 'cam2');
         
         // 澳大利亚M3
-        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:AUM3', processed.audusd, missingDataSymbols);
+        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:AUM3', processed.audusd, missingDataSymbols, processed, 'aum3');
         
         // 印度M2
-        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:INM2', processed.inrusd, missingDataSymbols);
+        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:INM2', processed.inrusd, missingDataSymbols, processed, 'inm2');
         
         // 瑞士M2
-        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:CHM2', processed.chfusd, missingDataSymbols);
+        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:CHM2', processed.chfusd, missingDataSymbols, processed, 'chm2');
         
         // 俄罗斯M2
-        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:RUM2', processed.rubusd, missingDataSymbols);
+        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:RUM2', processed.rubusd, missingDataSymbols, processed, 'rum2');
         
         // 巴西M2
-        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:BRM2', processed.brlusd, missingDataSymbols);
+        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:BRM2', processed.brlusd, missingDataSymbols, processed, 'brm2');
         
         // 韩国M2
-        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:KRM2', processed.krwusd, missingDataSymbols);
+        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:KRM2', processed.krwusd, missingDataSymbols, processed, 'krm2');
         
         // 墨西哥M2
-        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:MXM2', processed.mxnusd, missingDataSymbols);
+        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:MXM2', processed.mxnusd, missingDataSymbols, processed, 'mxm2');
         
         // 印尼M2
-        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:IDM2', processed.idrusd, missingDataSymbols);
+        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:IDM2', processed.idrusd, missingDataSymbols, processed, 'idm2');
         
         // 南非M2
-        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:ZAM2', processed.zarusd, missingDataSymbols);
+        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:ZAM2', processed.zarusd, missingDataSymbols, processed, 'zam2');
         
         // 马来西亚M2
-        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:MYM2', processed.myrusd, missingDataSymbols);
+        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:MYM2', processed.myrusd, missingDataSymbols, processed, 'mym2');
         
         // 瑞典M2
-        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:SEM2', processed.sekusd, missingDataSymbols);
+        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:SEM2', processed.sekusd, missingDataSymbols, processed, 'sem2');
         
         processed.other_m2_total = otherM2Total;
       }
@@ -542,7 +542,7 @@ export class GliService {
       if (params.japan_active) total += processed.japan || 0;
       if (params.other_m2_active) total += processed.other_m2_total || 0;
       
-      processed.total = total / this.trillion;
+      processed.total = total;
       
       processedData.push(processed as GliDataPoint);
     }
