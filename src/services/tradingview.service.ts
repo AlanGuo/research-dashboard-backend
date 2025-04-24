@@ -129,7 +129,8 @@ export class TradingViewService implements OnModuleDestroy {
       '1M': 'M'
     };
     
-    return mapping[interval] || interval;
+    const result = mapping[interval] || interval;
+    return result;
   }
 
   /**

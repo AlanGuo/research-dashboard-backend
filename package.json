@@ -30,6 +30,8 @@
     "@nestjs/platform-express": "^10.0.0",
     "@notionhq/client": "^2.3.0",
     "axios": "^1.8.4",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.1",
     "https-proxy-agent": "^7.0.6",
     "jszip": "^3.10.1",
     "reflect-metadata": "^0.1.13",

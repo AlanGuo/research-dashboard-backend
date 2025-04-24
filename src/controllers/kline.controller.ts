@@ -25,8 +25,8 @@ export class KlineController {
       const data = await this.tradingViewService.getKlineData(
         symbol,
         interval,
-        parseInt(bars),
-        from ? parseInt(from) : undefined
+        parseInt(bars, 10),
+        from ? parseInt(from, 10) : undefined
       );
       
       return {
