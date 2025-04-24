@@ -1,8 +1,8 @@
-# Funding Curve Backend
+# Research Dashboard backend
 
 ## Description
 
-Backend service for the Funding Curve application built with [Nest](https://github.com/nestjs/nest) framework.
+Backend service for the Research Dashboard application built with [Nest](https://github.com/nestjs/nest) framework.
 
 ## Installation
 
