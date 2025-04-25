@@ -121,9 +121,9 @@ export class BenchmarkService {
       color: '#dc143c'
     },
     {
-      id: 'n225',
+      id: 'nky',
       name: '日经225',
-      symbol: 'N225',
+      symbol: 'NKY',
       category: 'asia_indices',
       color: '#ff69b4'
     },
