@@ -61,6 +61,13 @@ export class BenchmarkService {
     
     // 美国指数
     {
+      id: 'dxy',
+      name: "美元指数",
+      symbol: "DXY",
+      category: 'us_indices',
+      color: '#21a189'
+    },
+    {
       id: 'spx',
       name: '标普500',
       symbol: 'SPX',
