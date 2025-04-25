@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { TradingViewService } from './tradingview.service';
 import { GliParamsDto } from '../dto/gli-params.dto';
 import { GliDataPoint, GliResponse } from '../models/gli.model';
+import { GliTrendPeriod, GliTrendResponse } from '../models/gli-trend.model';
 import { calculateROC, calculateSMA } from '../utils/technical-indicators';
 
 @Injectable()
@@ -78,7 +79,8 @@ export class GliService {
       }
     }
 
-    return this.alignDataByTimestamp(dataMap, limit, from);
+    // 将interval传递给alignDataByTimestamp方法
+    return this.alignDataByTimestamp(dataMap, limit, from, interval);
   }
 
   private getRequiredSymbols(params: GliParamsDto): string[] {
@@ -185,22 +187,57 @@ export class GliService {
    * @param dataMap 符号到数据的映射
    * @param limit 限制数量，默认10
    * @param from 起始时间戳（可选）
+   * @param interval 时间间隔（1D, 1W, 1M等），默认1D
    * @returns 对齐后的数据点数组
    */
-  private alignDataByTimestamp(dataMap: Map<string, any>, limit: number = 10, from?: number): any[] {
+  private alignDataByTimestamp(dataMap: Map<string, any>, limit: number = 10, from?: number, interval: string = '1D'): any[] {
+    // 标准化interval为大写
+    const normalizedInterval = interval.toUpperCase();
+    
+    // 计算时间间隔的毫秒数
+    let intervalMs: number;
+    switch (normalizedInterval) {
+      case '1W':
+        intervalMs = 7 * 24 * 60 * 60 * 1000; // 一周的毫秒数
+        break;
+      case '1M':
+        // 月份处理较复杂，我们使用30天作为近似值
+        intervalMs = 30 * 24 * 60 * 60 * 1000; // 约一个月的毫秒数
+        break;
+      case '1D':
+      default:
+        intervalMs = 24 * 60 * 60 * 1000; // 一天的毫秒数
+        break;
+    }
+    
     // 生成我们需要的时间范围（从新到旧）
     const timestamps: number[] = [];
     const now = new Date().getTime();
-    const startTime = from || (now - (limit * 24 * 60 * 60 * 1000)); // 如果没有from，则使用当前时间减去 limit 天
+    const startTime = from || (now - (limit * intervalMs)); // 根据interval计算起始时间
     
-    // 生成每天的时间戳（基于限制或者起始时间）
-    const endTime = from ? (from + (limit * 24 * 60 * 60 * 1000)) : now;
+    // 生成时间戳（基于限制或者起始时间）
+    const endTime = from ? (from + (limit * intervalMs)) : now;
     
-    // 生成每天的时间戳，从新到旧排序
-    for (let t = endTime; t >= startTime; t -= 24 * 60 * 60 * 1000) {
-      // 将时间调整为当天的零点
+    // 根据interval生成时间戳，从新到旧排序
+    for (let t = endTime; t >= startTime; t -= intervalMs) {
       const date = new Date(t);
-      date.setHours(0, 0, 0, 0);
+      
+      // 根据不同的时间间隔调整日期
+      if (normalizedInterval === '1D') {
+        // 对于日线，设置为当天的零点
+        date.setHours(0, 0, 0, 0);
+      } else if (normalizedInterval === '1W') {
+        // 对于周线，设置为该周的第一天（星期一）
+        const day = date.getDay();
+        const diff = day === 0 ? 6 : day - 1; // 调整为周一（0是周日，1是周一）
+        date.setDate(date.getDate() - diff);
+        date.setHours(0, 0, 0, 0);
+      } else if (normalizedInterval === '1M') {
+        // 对于月线，设置为该月的第一天
+        date.setDate(1);
+        date.setHours(0, 0, 0, 0);
+      }
+      
       timestamps.push(date.getTime());
     }
     
@@ -553,4 +590,36 @@ export class GliService {
 
   // 技术指标计算已移至前端
   // calculateIndicators 和 calculateComponentIndicators 方法已移除
+
+  // GLI趋势时段数据
+  private readonly gliTrendPeriods: GliTrendPeriod[] = [
+    { startDate: '2024-12-31', endDate: '2025-04-23', trend: 'up'},
+    { startDate: '2024-09-17', endDate: '2024-12-31', trend: 'down'},
+    { startDate: '2024-07-01', endDate: '2024-09-17', trend: 'up' },
+    { startDate: '2024-01-02', endDate: '2024-07-01', trend: 'down' },
+    { startDate: '2023-10-02', endDate: '2024-01-02', trend: 'up' },
+    { startDate: '2023-04-04', endDate: '2023-10-02', trend: 'down' },
+    { startDate: '2022-11-04', endDate: '2023-02-01', trend: 'up' },
+    { startDate: '2022-03-09', endDate: '2022-11-04', trend: 'down' },
+    { startDate: '2020-03-20', endDate: '2021-09-16', trend: 'up' },
+    { startDate: '2018-03-06', endDate: '2018-11-01', trend: 'down' },
+    { startDate: '2016-12-30', endDate: '2018-03-06', trend: 'up' },
+    { startDate: '2016-09-08', endDate: '2016-12-30', trend: 'down' },
+    { startDate: '2016-01-29', endDate: '2016-09-08', trend: 'up' },
+    { startDate: '2013-07-10', endDate: '2014-06-16', trend: 'up' },
+    { startDate: '2009-03-10', endDate: '2013-01-29', trend: 'up' },
+    { startDate: '2008-12-31', endDate: '2009-03-10', trend: 'down' },
+    { startDate: '2008-09-11', endDate: '2008-12-31', trend: 'up' },
+    { startDate: '2008-08-01', endDate: '2008-09-11', trend: 'down' },
+    { startDate: '2007-06-29', endDate: '2008-08-01', trend: 'up' },
+  ];
+
+  // 获取GLI趋势时段
+  getTrendPeriods(): GliTrendResponse {
+    return {
+      success: true,
+      data: this.gliTrendPeriods,
+      timestamp: new Date().toISOString()
+    };
+  }
 }

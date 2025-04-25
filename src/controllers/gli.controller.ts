@@ -3,6 +3,7 @@ import { GliService } from '../services/gli.service';
 import { GliParamsDto } from '../dto/gli-params.dto';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
+import { GliTrendResponse } from '../models/gli-trend.model';
 
 @Controller('v1/gli')
 export class GliController {
@@ -25,5 +26,10 @@ export class GliController {
     }
     
     return this.gliService.getGli(params);
+  }
+  
+  @Get('trend-periods')
+  getTrendPeriods(): GliTrendResponse {
+    return this.gliService.getTrendPeriods();
   }
 }

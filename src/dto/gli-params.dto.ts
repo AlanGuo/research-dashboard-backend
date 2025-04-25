@@ -76,6 +76,6 @@ export class GliParamsDto {
 
   @IsOptional()
   @IsString()
-  @IsIn(['1D', '1W', '1M'])
+  @IsIn(['1D', '1W', '1M', '1d', '1w', '1m'])
   interval?: string = '1D';
 }
