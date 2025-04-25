@@ -1,14 +1,14 @@
 {
   "apps" : [
     {
-      "name"      : "funding-curve-backend",
+      "name"      : "resarch-dashboard-backend",
       "script"    : "dist/main.js",
       "args"      : "",   
       "instances" : 1,
       "exec_mode" : "fork",
       "watch"     : false,
-      "error_file": "logs/funding-curve-backend.stderr.log",
-      "out_file"  : "logs/funding-curve-backend.log",
+      "error_file": "logs/resarch-dashboard-backend.stderr.log",
+      "out_file"  : "logs/resarch-dashboard-backend.log",
       "mergeLogs" : false,
       "env": {
         "NODE_ENV": "production"
