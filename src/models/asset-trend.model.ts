@@ -5,10 +5,11 @@ export interface AssetPerformance {
   periodId: string;  // 趋势期间ID，格式为 startDate_endDate
   startDate: string; // 开始日期
   endDate: string;   // 结束日期
-  trend: 'up' | 'down'; // 趋势方向
   change: number;    // 涨跌幅度（百分比）
   startPrice?: number; // 起始价格
   endPrice?: number;   // 结束价格
+  dataStatus?: string; // 数据状态（available, no_data, too_early, req_failed, rate_limited）
+  statusMessage?: string; // 状态详细信息
 }
 
 // 资产趋势表现数据
@@ -26,10 +27,11 @@ const AssetPerformanceSchema = new Schema<AssetPerformance>({
   periodId: { type: String, required: true },
   startDate: { type: String, required: true },
   endDate: { type: String, required: true },
-  trend: { type: String, enum: ['up', 'down'], required: true },
   change: { type: Number, required: true },
   startPrice: { type: Number },
-  endPrice: { type: Number }
+  endPrice: { type: Number },
+  dataStatus: {type: String},
+  statusMessage: {type: String}
 });
 
 const AssetTrendSchema = new Schema<AssetTrend>({

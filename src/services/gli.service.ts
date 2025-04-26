@@ -3,7 +3,6 @@ import { TradingViewService } from './tradingview.service';
 import { GliParamsDto } from '../dto/gli-params.dto';
 import { GliDataPoint, GliResponse } from '../models/gli.model';
 import { GliTrendPeriod, GliTrendResponse } from '../models/gli-trend.model';
-import { calculateROC, calculateSMA } from '../utils/technical-indicators';
 
 @Injectable()
 export class GliService {
