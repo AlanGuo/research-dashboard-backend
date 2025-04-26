@@ -6,8 +6,6 @@ import { GliTrendPeriod, GliTrendResponse } from '../models/gli-trend.model';
 
 @Injectable()
 export class GliService {
-  private readonly trillion = 1000000000000;
-
   constructor(private readonly tradingViewService: TradingViewService) {}
 
   async getGli(params: GliParamsDto): Promise<GliResponse> {
@@ -591,7 +589,7 @@ export class GliService {
   // calculateIndicators 和 calculateComponentIndicators 方法已移除
 
   // GLI趋势时段数据
-  private readonly gliTrendPeriods: GliTrendPeriod[] = [
+  public readonly gliTrendPeriods: GliTrendPeriod[] = [
     { startDate: '2024-12-31', endDate: '2025-04-23', trend: 'up'},
     { startDate: '2024-09-17', endDate: '2024-12-31', trend: 'down'},
     { startDate: '2024-07-01', endDate: '2024-09-17', trend: 'up' },
@@ -614,11 +612,109 @@ export class GliService {
   ];
 
   // 获取GLI趋势时段
-  getTrendPeriods(): GliTrendResponse {
-    return {
-      success: true,
-      data: this.gliTrendPeriods,
-      timestamp: new Date().toISOString()
-    };
+  async getTrendPeriods(params: GliParamsDto): Promise<GliTrendResponse> {
+    try {
+      // 使用传入的参数，但强制使用日线K线数据并确保获取到所有趋势时段的数据
+      const apiParams: GliParamsDto = {
+        // 强制使用日线数据，忽略传入的interval
+        interval: '1D',
+        // 保证能获取到覆盖gliTrendPeriods的所有kline
+        limit: 6500,
+        // 保留其他参数
+        fed_active: params.fed_active,
+        rrp_active: params.rrp_active,
+        tga_active: params.tga_active,
+        ecb_active: params.ecb_active,
+        pbc_active: params.pbc_active,
+        boj_active: params.boj_active,
+        other_active: params.other_active,
+        usa_active: params.usa_active,
+        europe_active: params.europe_active,
+        china_active: params.china_active,
+        japan_active: params.japan_active,
+        other_m2_active: params.other_m2_active
+      };
+      // 获取GLI数据
+      const gliResponse = await this.getGli(apiParams);
+      
+      if (!gliResponse.success || !gliResponse.data || gliResponse.data.length === 0) {
+        console.warn('无法获取GLI数据来计算趋势时段的百分比变化');
+        return {
+          success: true,
+          data: this.gliTrendPeriods,
+          timestamp: new Date().toISOString()
+        };
+      }
+      
+      // 按时间戳从旧到新排序
+      const sortedData = [...gliResponse.data].sort((a, b) => a.timestamp - b.timestamp);
+      
+      // 为每个趋势时段计算百分比变化
+      const periodsWithChanges = this.gliTrendPeriods.map(period => {
+        const startDate = new Date(period.startDate);
+        const endDate = new Date(period.endDate);
+        const startTimestamp = startDate.getTime();
+        const endTimestamp = endDate.getTime();
+        
+        // 找到最接近开始日期和结束日期的数据点
+        let startPoint: GliDataPoint | undefined;
+        let endPoint: GliDataPoint | undefined;
+        
+        // 查找最接近开始日期的点（不超过开始日期）
+        for (let i = 0; i < sortedData.length; i++) {
+          if (sortedData[i].timestamp <= startTimestamp) {
+            startPoint = sortedData[i];
+          } else {
+            // 一旦超过开始日期，就停止查找
+            break;
+          }
+        }
+        
+        // 查找最接近结束日期的点（不超过结束日期）
+        for (let i = 0; i < sortedData.length; i++) {
+          if (sortedData[i].timestamp <= endTimestamp) {
+            endPoint = sortedData[i];
+          } else {
+            // 一旦超过结束日期，就停止查找
+            break;
+          }
+        }
+        
+        // 如果没有找到开始点，但找到了结束点，使用第一个数据点作为开始点
+        if (!startPoint && endPoint && sortedData.length > 0) {
+          startPoint = sortedData[0];
+        }
+        
+        // 如果没有找到结束点，但找到了开始点，使用最后一个数据点作为结束点
+        if (startPoint && !endPoint && sortedData.length > 0) {
+          endPoint = sortedData[sortedData.length - 1];
+        }
+        
+        // 计算涨跌幅
+        let percentChange: number | undefined;
+        if (startPoint && endPoint && startPoint.total > 0) {
+          percentChange = ((endPoint.total - startPoint.total) / startPoint.total) * 100;
+        }
+        
+        return {
+          ...period,
+          percentChange
+        };
+      });
+      
+      return {
+        success: true,
+        data: periodsWithChanges,
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error('计算GLI趋势时段的百分比变化时出错:', error);
+      // 出错时返回原始数据
+      return {
+        success: true,
+        data: this.gliTrendPeriods,
+        timestamp: new Date().toISOString()
+      };
+    }
   }
 }

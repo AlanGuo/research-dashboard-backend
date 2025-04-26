@@ -29,7 +29,23 @@ export class GliController {
   }
   
   @Get('trend-periods')
-  getTrendPeriods(): GliTrendResponse {
-    return this.gliService.getTrendPeriods();
+  async getTrendPeriods(@Query() queryParams): Promise<GliTrendResponse> {
+    // 手动转换参数类型
+    console.log(queryParams)
+    const params = plainToInstance(GliParamsDto, queryParams);
+    
+    // 验证参数
+    const errors = await validate(params);
+    if (errors.length > 0) {
+      return {
+        success: false,
+        error: 'Invalid parameters',
+        errors,
+        timestamp: new Date().toISOString(),
+        data: []
+      };
+    }
+    
+    return await this.gliService.getTrendPeriods(params);
   }
 }

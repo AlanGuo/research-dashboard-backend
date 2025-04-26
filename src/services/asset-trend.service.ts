@@ -5,6 +5,7 @@ import { AssetTrend } from '../models/asset-trend.model';
 import { GliTrendPeriod } from '../models/gli-trend.model';
 import { TradingViewService } from './tradingview.service';
 import { BenchmarkService } from './benchmark.service';
+import { GliParamsDto } from '../dto/gli-params.dto';
 import { GliService } from './gli.service';
 
 // 数据可用性状态
@@ -55,12 +56,14 @@ export class AssetTrendService {
 
   /**
    * 计算并存储所有资产在各趋势期间的表现
+   * @param forceUpdate 是否强制更新
+   * @param gliParams GLI参数，用于计算GLI趋势时段
    */
-  public async calculateAndStoreAllAssetTrends(forceUpdate = false): Promise<AssetTrend[]> {
+  public async calculateAndStoreAllAssetTrends(forceUpdate = false, gliParams?: GliParamsDto): Promise<AssetTrend[]> {
     try {
       console.log('\n开始获取趋势期间数据...');
-      // 获取所有趋势期间
-      const trendPeriods = await this.getTrendPeriods();
+      // 获取所有趋势期间，如果有GLI参数，则传递给GLI服务
+      const trendPeriods = this.gliService.gliTrendPeriods;
       console.log(`成功获取 ${trendPeriods.length} 个趋势期间`);
       
       console.log('开始获取对比标的数据...');
@@ -327,17 +330,23 @@ export class AssetTrendService {
 
   /**
    * 获取所有趋势期间
+   * @param gliParams GLI参数，用于计算GLI趋势时段
    */
-  private async getTrendPeriods(): Promise<GliTrendPeriod[]> {
+  private async getTrendPeriods(gliParams?: GliParamsDto): Promise<GliTrendPeriod[]> {
     try {
-      const trendPeriodsResponse = this.gliService.getTrendPeriods();
-      if (trendPeriodsResponse.success && Array.isArray(trendPeriodsResponse.data)) {
-        return trendPeriodsResponse.data;
+      // 如果有GLI参数，则使用GLI服务的getTrendPeriods方法获取趋势期间
+      if (gliParams) {
+        const response = await this.gliService.getTrendPeriods(gliParams);
+        if (response.success && response.data) {
+          return response.data;
+        }
       }
-      return [];
+      
+      // 如果没有参数或者获取失败，则使用预定义的趋势期间
+      return this.gliService.gliTrendPeriods;
     } catch (error) {
-      this.logger.error('获取趋势期间数据失败', error);
-      throw new Error('获取趋势期间数据失败');
+      this.logger.error('获取GLI趋势时段失败', error);
+      return this.gliService.gliTrendPeriods;
     }
   }
 
