@@ -600,7 +600,7 @@ export class GliService {
     { startDate: '2023-10-02', endDate: '2024-01-02', trend: 'up' },
     { startDate: '2023-04-04', endDate: '2023-10-02', trend: 'down' },
     { startDate: '2022-11-04', endDate: '2023-02-01', trend: 'up' },
-    { startDate: '2022-03-09', endDate: '2022-11-04', trend: 'down' },
+    { startDate: '2022-03-09', endDate: '2022-10-01', trend: 'down' },
     { startDate: '2020-03-20', endDate: '2021-09-16', trend: 'up' },
     { startDate: '2018-03-06', endDate: '2018-11-01', trend: 'down' },
     { startDate: '2016-12-30', endDate: '2018-03-06', trend: 'up' },
