@@ -31,7 +31,6 @@ export class GliController {
   @Get('trend-periods')
   async getTrendPeriods(@Query() queryParams): Promise<GliTrendResponse> {
     // 手动转换参数类型
-    console.log(queryParams)
     const params = plainToInstance(GliParamsDto, queryParams);
     
     // 验证参数
