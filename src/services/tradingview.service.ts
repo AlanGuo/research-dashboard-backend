@@ -16,7 +16,9 @@ export class TradingViewService implements OnModuleDestroy {
     timeoutRef?: NodeJS.Timeout
   }> = new Map();
   private requestCounter = 0;
+  private timeoutCounter = 0; // 超时请求计数器
   private readonly RESET_THRESHOLD = 1000; // 处理1000个请求后重置客户端
+  private readonly TIMEOUT_RESET_THRESHOLD = 5; // 5次超时请求后重置客户端
   private readonly CHART_TIMEOUT_MS = 15000; // 15秒超时
   private readonly STALE_CHART_THRESHOLD_MS = 30000; // 30秒视为过期chart
   
@@ -126,6 +128,7 @@ export class TradingViewService implements OnModuleDestroy {
     // 创建新客户端
     this.initClient();
     this.requestCounter = 0;
+    this.timeoutCounter = 0; // 重置超时计数器
     this.logger.log('TradingView client reset completed');
   }
 
@@ -145,6 +148,12 @@ export class TradingViewService implements OnModuleDestroy {
     // 检查是否需要重置客户端
     if (this.requestCounter >= this.RESET_THRESHOLD) {
       this.logger.warn(`Request threshold reached (${this.requestCounter}), resetting client...`);
+      await this.resetClient();
+    }
+    
+    // 检查超时请求数量是否超过阈值
+    if (this.timeoutCounter >= this.TIMEOUT_RESET_THRESHOLD) {
+      this.logger.warn(`Timeout threshold reached (${this.timeoutCounter}), resetting client...`);
       await this.resetClient();
     }
     
@@ -242,6 +251,10 @@ export class TradingViewService implements OnModuleDestroy {
       const timeoutPromise = new Promise((_, reject) => {
         const timeoutId = setTimeout(() => {
           this.logger.error(`[${requestId}] Request timed out after ${this.CHART_TIMEOUT_MS}ms`);
+          // 增加超时计数器
+          this.timeoutCounter++;
+          this.logger.warn(`Timeout counter increased to ${this.timeoutCounter}`);
+          
           this.cleanupChart(chartId);
           reject(new Error(`Request for ${formattedSymbol} timed out after ${this.CHART_TIMEOUT_MS}ms`));
         }, this.CHART_TIMEOUT_MS);
