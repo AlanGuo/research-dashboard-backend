@@ -110,6 +110,14 @@ export class BenchmarkService {
     
     // 债券
     {
+      id: 'tlt',
+      name: 'TLT',
+      symbol: 'TLT',
+      category: 'bonds',
+      color: '#1c9ed7',
+      lagDays: 90
+    },
+    {
       id: 'us10y',
       name: '美国10年期国债',
       symbol: 'US10Y',
