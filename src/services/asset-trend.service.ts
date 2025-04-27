@@ -4,8 +4,7 @@ import { Model } from 'mongoose';
 import { AssetTrend } from '../models/asset-trend.model';
 import { GliTrendPeriod } from '../models/gli-trend.model';
 import { TradingViewService } from './tradingview.service';
-import { BenchmarkService } from './benchmark.service';
-import { GliParamsDto } from '../dto/gli-params.dto';
+import { BenchmarkAsset, BenchmarkService } from './benchmark.service';
 import { GliService } from './gli.service';
 
 // 数据可用性状态
@@ -53,13 +52,68 @@ export class AssetTrendService {
       throw new Error(`获取资产 ${assetId} 的趋势表现数据失败`);
     }
   }
+  
+  /**
+   * 临时计算资产在特定滞后天数下的趋势表现，不更新数据库
+   * @param assetId 资产ID
+   * @param intervalType 时间间隔类型（如'1D', '1W', '1M'）
+   * @param intervalCount 时间间隔数量
+   */
+  public async updateAssetLagDays(assetId: string, intervalType: string, intervalCount: number): Promise<AssetTrend | null> {
+    try {
+      // 获取资产信息
+      const assets = await this.getBenchmarkAssets();
+      const asset = assets.find(a => a.id === assetId);
+      
+      if (!asset) {
+        throw new Error(`未找到ID为 ${assetId} 的资产`);
+      }
+      
+      // 将时间间隔转换为天数
+      let lagDays = 0;
+      switch (intervalType) {
+        case '1D':
+          lagDays = intervalCount; // 日线，直接使用天数
+          break;
+        case '1W':
+          lagDays = intervalCount * 7; // 周线，乘以7
+          break;
+        case '1M':
+          lagDays = intervalCount * 30; // 月线，粗略估计为30天
+          break;
+        default:
+          lagDays = intervalCount; // 默认情况
+      }
+      
+      // 获取所有趋势期间
+      const trendPeriods = this.gliService.gliTrendPeriods;
+      
+      // 临时创建一个带有新lagDays的资产对象，不修改原始资产
+      const tempAsset = { ...asset, lagDays };
+      
+      // 使用临时资产对象计算趋势表现
+      const assetTrend = await this.calculateAssetTrend(tempAsset, trendPeriods);
+      
+      this.logger.log(`已临时计算资产 ${asset.name} 在 ${lagDays} 天滞后下的趋势表现（不更新数据库）`);
+      
+      // 返回计算结果，但不写入数据库
+      return {
+        ...assetTrend,
+        // 添加一个标记，表示这是临时计算的结果
+        temporary: true
+      } as AssetTrend;
+    } catch (error) {
+      this.logger.error(`计算资产 ${assetId} 在特定滞后天数下的趋势表现失败`, error);
+      throw new Error(`计算资产 ${assetId} 在特定滞后天数下的趋势表现失败: ${error.message}`);
+    }
+  }
 
   /**
    * 计算并存储所有资产在各趋势期间的表现
    * @param forceUpdate 是否强制更新
    * @param gliParams GLI参数，用于计算GLI趋势时段
    */
-  public async calculateAndStoreAllAssetTrends(forceUpdate = false, gliParams?: GliParamsDto): Promise<AssetTrend[]> {
+  public async calculateAndStoreAllAssetTrends(forceUpdate = false): Promise<AssetTrend[]> {
     try {
       console.log('\n开始获取趋势期间数据...');
       // 获取所有趋势期间，如果有GLI参数，则传递给GLI服务
@@ -160,9 +214,11 @@ export class AssetTrendService {
 
   /**
    * 计算单个资产在各趋势期间的表现
+   * @param asset 资产对象，包含id、name、symbol、category和lagDays属性
+   * @param trendPeriods 趋势期间数组
    */
   private async calculateAssetTrend(
-    asset: any, 
+    asset: BenchmarkAsset, 
     trendPeriods: GliTrendPeriod[]
   ): Promise<AssetTrend> {
     try {
@@ -194,6 +250,13 @@ export class AssetTrendService {
           latestEndDate = endDate;
         }
       }
+      
+      // 考虑资产的lagDays属性，调整时间范围
+      // 如果lagDays为正，表示对比标的滞后GLI，需要向后移动时间窗口
+      // 如果lagDays为正，表示对比标的领先GLI，需要向后移动时间窗口
+      const lagDaysMs = (asset.lagDays || 0) * 24 * 60 * 60 * 1000; // 转换为毫秒
+      earliestStartDate += lagDaysMs;
+      latestEndDate += lagDaysMs;
       
       // 创建存储各期间表现的数组
       const performances: any[] = [];
@@ -250,13 +313,19 @@ export class AssetTrendService {
               continue;
             }
 
-            const startDate = new Date(period.startDate).getTime();
-            const endDate = new Date(period.endDate).getTime();
+            // 考虑lagDays调整趋势期间的起止时间
+            const lagDaysMs = (asset.lagDays || 0) * 24 * 60 * 60 * 1000; // 转换为毫秒
+            const startDate = new Date(period.startDate).getTime() + lagDaysMs;
+            const endDate = new Date(period.endDate).getTime() + lagDaysMs;
 
             // 过滤出该期间的K线数据
             const periodCandles = allCandles.filter(
               candle => candle.timestamp >= startDate && candle.timestamp <= endDate
             );
+            
+            // 记录调整后的实际日期范围（用于调试）
+            this.logger.debug(`资产 ${asset.name} 趋势期间 ${period.startDate} 至 ${period.endDate} 已调整lagDays(${asset.lagDays})，` +
+              `实际查询范围: ${new Date(startDate).toISOString().split('T')[0]} 至 ${new Date(endDate).toISOString().split('T')[0]}`);
 
             if (periodCandles.length > 0) {
               // 计算该期间的涨跌幅
@@ -329,33 +398,14 @@ export class AssetTrendService {
   }
 
   /**
-   * 获取所有趋势期间
-   * @param gliParams GLI参数，用于计算GLI趋势时段
-   */
-  private async getTrendPeriods(gliParams?: GliParamsDto): Promise<GliTrendPeriod[]> {
-    try {
-      // 如果有GLI参数，则使用GLI服务的getTrendPeriods方法获取趋势期间
-      if (gliParams) {
-        const response = await this.gliService.getTrendPeriods(gliParams);
-        if (response.success && response.data) {
-          return response.data;
-        }
-      }
-      
-      // 如果没有参数或者获取失败，则使用预定义的趋势期间
-      return this.gliService.gliTrendPeriods;
-    } catch (error) {
-      this.logger.error('获取GLI趋势时段失败', error);
-      return this.gliService.gliTrendPeriods;
-    }
-  }
-
-  /**
    * 获取所有对比标的
    */
   private async getBenchmarkAssets(): Promise<any[]> {
     try {
-      return this.benchmarkService.getAllBenchmarks();
+      // 获取所有基准资产，包含lagDays属性
+      const benchmarks = await this.benchmarkService.getAllBenchmarks();
+      this.logger.debug(`获取到 ${benchmarks.length} 个对比标的，包含lagDays属性`); 
+      return benchmarks;
     } catch (error) {
       this.logger.error('获取对比标的数据失败', error);
       throw new Error('获取对比标的数据失败');

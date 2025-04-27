@@ -115,4 +115,59 @@ export class AssetTrendController {
       };
     }
   };
+  
+  /**
+   * 临时计算资产在特定滞后天数下的趋势表现，不更新数据库
+   * @param assetId 资产ID
+   * @param body 请求体，包含intervalType和intervalCount
+   */
+  @Get(':assetId/lag-days')
+  public async updateAssetLagDays(
+    @Param('assetId') assetId: string,
+    @Query() query: { intervalType: string; intervalCount: number }
+  ): Promise<AssetTrendResponse> {
+    try {
+      this.logger.log(`开始临时计算资产 ${assetId} 在特定滞后天数下的趋势表现，间隔类型: ${query.intervalType}, 间隔数量: ${query.intervalCount}`);
+      
+      const tempTrend = await this.assetTrendService.updateAssetLagDays(
+        assetId,
+        query.intervalType,
+        query.intervalCount
+      );
+      
+      if (tempTrend) {
+        // 计算滞后天数
+        let lagDays = 0;
+        switch (query.intervalType) {
+          case '1D': lagDays = query.intervalCount; break;
+          case '1W': lagDays = query.intervalCount * 7; break;
+          case '1M': lagDays = query.intervalCount * 30; break;
+          default: lagDays = query.intervalCount;
+        }
+        
+        return {
+          success: true,
+          data: tempTrend,
+          timestamp: new Date().toISOString(),
+          message: `已临时计算资产 ${assetId} 在 ${lagDays} 天滞后下的趋势表现`,
+          temporary: true
+        };
+      } else {
+        return {
+          success: false,
+          data: [],
+          timestamp: new Date().toISOString(),
+          message: `未找到资产 ${assetId}`
+        };
+      }
+    } catch (error) {
+      this.logger.error(`计算资产 ${assetId} 在特定滞后天数下的趋势表现失败`, error);
+      return {
+        success: false,
+        data: [],
+        timestamp: new Date().toISOString(),
+        message: `计算资产 ${assetId} 在特定滞后天数下的趋势表现失败: ${error.message}`
+      };
+    }
+  }
 }

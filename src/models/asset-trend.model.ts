@@ -58,4 +58,5 @@ export interface AssetTrendResponse {
   data: AssetTrend[] | AssetTrend;
   timestamp: string;
   message?: string;
+  temporary?: boolean; // 标记是否为临时计算的结果
 }
