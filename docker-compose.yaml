@@ -2,7 +2,7 @@ services:
 # Redis
   redis:
     image: redis:latest
-    container_name: redis
+    container_name: rd-redis
     command: redis-server --dir /data
     restart: always
     volumes:
@@ -13,7 +13,7 @@ services:
   mongo:
     hostname: mongo
     image: mongo
-    container_name: mongo
+    container_name: rd-mongo
     restart: always
     volumes:
     - ./app/mongo:/var/lib/mongodb
