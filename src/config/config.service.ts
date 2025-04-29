@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, LogLevel } from '@nestjs/common';
 import { ConfigService as NestConfigService } from '@nestjs/config';
 
 @Injectable()
@@ -26,8 +26,8 @@ export class ConfigService {
     return this.configService.get('database');
   }
 
-  get loggingLevel(): string {
-    return this.configService.get<string>('logging.level');
+  get loggingLevel(): LogLevel[] {
+    return this.configService.get<LogLevel[]>('logging.level');
   }
 
   get corsEnabled(): boolean {

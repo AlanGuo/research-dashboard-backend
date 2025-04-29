@@ -5,7 +5,8 @@ import { ConfigService } from './config';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
-  
+  // 应用日志等级
+  app.useLogger(configService.loggingLevel);
   // Enable CORS if configured
   if (configService.corsEnabled) {
     app.enableCors({
