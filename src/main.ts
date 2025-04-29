@@ -1,12 +1,18 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ConfigService } from './config';
+import { LogLevel } from '@nestjs/common';
+import configuration from './config/configuration';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // 直接从配置文件加载日志级别
+  const config = configuration();
+  const loggingLevel = config.logging?.level || ['log', 'error', 'warn', 'fatal', 'debug', 'verbose'];
+  
+  const app = await NestFactory.create(AppModule, {
+    logger: loggingLevel as LogLevel[],
+  });
   const configService = app.get(ConfigService);
-  // 应用日志等级
-  app.useLogger(configService.loggingLevel);
   // Enable CORS if configured
   if (configService.corsEnabled) {
     app.enableCors({
