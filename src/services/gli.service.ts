@@ -590,7 +590,7 @@ export class GliService {
 
   // GLI趋势时段数据
   public readonly gliTrendPeriods: GliTrendPeriod[] = [
-    { startDate: '2024-12-31', endDate: '2025-05-03', trend: 'up'},
+    { startDate: '2024-12-31', endDate: '2025-04-23', trend: 'up'},
     { startDate: '2024-09-17', endDate: '2024-12-31', trend: 'down'},
     { startDate: '2024-07-01', endDate: '2024-09-17', trend: 'up' },
     { startDate: '2024-01-02', endDate: '2024-07-01', trend: 'down' },
