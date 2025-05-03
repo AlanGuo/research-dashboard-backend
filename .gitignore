@@ -3,6 +3,7 @@
 /node_modules
 /docker-data
 /src/config/environments/*.json
+deploy.sh
 
 # Logs
 logs
