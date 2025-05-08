@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { AssetTrend } from '../models/asset-trend.model';
+import { TrendType } from '../models/trend-type.enum';
 import { GliTrendPeriod } from '../models/gli-trend.model';
 import { TradingViewService } from './tradingview.service';
 import { BenchmarkAsset, BenchmarkService } from './benchmark.service';
@@ -29,27 +30,30 @@ export class AssetTrendService {
   
   /**
    * 获取所有资产在各趋势期间的表现数据
+   * @param trendType 趋势类型（'centralBank' 或 'm2'）
    */
-  public async getAllAssetTrends(): Promise<AssetTrend[]> {
+  public async getAllAssetTrends(trendType: 'centralBank' | 'm2' = 'centralBank'): Promise<AssetTrend[]> {
     try {
-      const trends = await this.assetTrendModel.find().sort({ category: 1, assetName: 1 });
+      const trends = await this.assetTrendModel.find({ trendType }).sort({ category: 1, assetName: 1 });
       return trends;
     } catch (error) {
-      this.logger.error('获取资产趋势表现数据失败', error);
-      throw new Error('获取资产趋势表现数据失败');
+      this.logger.error(`获取资产${trendType}趋势表现数据失败`, error);
+      throw new Error(`获取资产${trendType}趋势表现数据失败`);
     }
   }
 
   /**
    * 获取单个资产在各趋势期间的表现数据
+   * @param assetId 资产ID
+   * @param trendType 趋势类型（'centralBank' 或 'm2'）
    */
-  public async getAssetTrend(assetId: string): Promise<AssetTrend | null> {
+  public async getAssetTrend(assetId: string, trendType: 'centralBank' | 'm2' = 'centralBank'): Promise<AssetTrend | null> {
     try {
-      const trend = await this.assetTrendModel.findOne({ assetId });
+      const trend = await this.assetTrendModel.findOne({ assetId, trendType });
       return trend;
     } catch (error) {
-      this.logger.error(`获取资产 ${assetId} 的趋势表现数据失败`, error);
-      throw new Error(`获取资产 ${assetId} 的趋势表现数据失败`);
+      this.logger.error(`获取资产 ${assetId} 的${trendType}趋势表现数据失败`, error);
+      throw new Error(`获取资产 ${assetId} 的${trendType}趋势表现数据失败`);
     }
   }
   
@@ -58,8 +62,14 @@ export class AssetTrendService {
    * @param assetId 资产ID
    * @param intervalType 时间间隔类型（如'1D', '1W', '1M'）
    * @param intervalCount 时间间隔数量
+   * @param trendType 趋势类型（'centralBank' 或 'm2'）
    */
-  public async updateAssetLagDays(assetId: string, intervalType: string, intervalCount: number): Promise<AssetTrend | null> {
+  public async updateAssetLagDays(
+    assetId: string, 
+    intervalType: string, 
+    intervalCount: number,
+    trendType: 'centralBank' | 'm2' = 'centralBank'
+  ): Promise<AssetTrend | null> {
     try {
       // 获取资产信息
       const assets = await this.getBenchmarkAssets();
@@ -85,22 +95,25 @@ export class AssetTrendService {
           lagDays = intervalCount; // 默认情况
       }
       
-      // 获取所有趋势期间
-      const trendPeriods = this.gliService.gliTrendPeriods;
+      // 根据趋势类型获取趋势期间
+      const trendPeriods = trendType === 'centralBank' 
+        ? this.gliService.centralBankTrendPeriods 
+        : this.gliService.m2TrendPeriods;
       
       // 临时创建一个带有新lagDays的资产对象，不修改原始资产
       const tempAsset = { ...asset, lagDays };
       
       // 使用临时资产对象计算趋势表现
-      const assetTrend = await this.calculateAssetTrend(tempAsset, trendPeriods);
+      const assetTrend = await this.calculateAssetTrend(tempAsset, trendPeriods, trendType);
       
-      this.logger.log(`已临时计算资产 ${asset.name} 在 ${lagDays} 天滞后下的趋势表现（不更新数据库）`);
+      this.logger.log(`已临时计算资产 ${asset.name} 在 ${lagDays} 天滞后下的 ${trendType} 趋势表现（不更新数据库）`);
       
       // 返回计算结果，但不写入数据库
       return {
         ...assetTrend,
-        // 添加一个标记，表示这是临时计算的结果
-        temporary: true
+        // 添加标记，表示这是临时计算的结果和趋势类型
+        temporary: true,
+        trendType
       } as AssetTrend;
     } catch (error) {
       this.logger.error(`计算资产 ${assetId} 在特定滞后天数下的趋势表现失败`, error);
@@ -116,9 +129,10 @@ export class AssetTrendService {
   public async calculateAndStoreAllAssetTrends(forceUpdate = false): Promise<AssetTrend[]> {
     try {
       console.log('\n开始获取趋势期间数据...');
-      // 获取所有趋势期间，如果有GLI参数，则传递给GLI服务
-      const trendPeriods = this.gliService.gliTrendPeriods;
-      console.log(`成功获取 ${trendPeriods.length} 个趋势期间`);
+      // 获取所有趋势期间
+      const centralBankTrendPeriods = this.gliService.centralBankTrendPeriods;
+      const m2TrendPeriods = this.gliService.m2TrendPeriods;
+      console.log(`成功获取 ${centralBankTrendPeriods.length} 个央行趋势期间和 ${m2TrendPeriods.length} 个M2趋势期间`);
       
       console.log('开始获取对比标的数据...');
       // 获取所有对比标的
@@ -141,43 +155,61 @@ export class AssetTrendService {
         console.log(`\n[资产 ${index + 1}/${totalAssets}] 开始处理: ${asset.name} (${asset.symbol})`);
         
         try {
-          // 检查数据库中是否已有该资产的数据，且不需要强制更新
-          if (!forceUpdate) {
-            const existingData = await this.assetTrendModel.findOne({ assetId: asset.id });
-            if (existingData) {
-              console.log(`  ✓ 使用缓存数据: ${asset.name} (数据库中已存在记录)`);
-              processedAssets++;
-              results.push(existingData);
-              continue; // 跳过当前资产，处理下一个
-            }
-          }
+          // 处理央行趋势
+          console.log(`  获取 ${asset.name} 的央行趋势数据 (共 ${centralBankTrendPeriods.length} 个趋势期间)...`);
+          const centralBankTrend = await this.calculateAssetTrend(asset, centralBankTrendPeriods, 'centralBank');
           
-          // 计算该资产在各趋势期间的表现
-          console.log(`  获取 ${asset.name} 的趋势数据 (共 ${trendPeriods.length} 个趋势期间)...`);
-          const assetTrend = await this.calculateAssetTrend(asset, trendPeriods);
+          // 处理M2趋势
+          console.log(`  获取 ${asset.name} 的M2趋势数据 (共 ${m2TrendPeriods.length} 个趋势期间)...`);
+          const m2Trend = await this.calculateAssetTrend(asset, m2TrendPeriods, 'm2');
           
-          // 统计数据状态
-          const statusCounts: Record<string, number> = {};
-          assetTrend.performances.forEach(perf => {
+          // 统计央行趋势数据状态
+          const centralBankStatusCounts: Record<string, number> = {};
+          centralBankTrend.performances.forEach(perf => {
             if (perf.dataStatus) {
-              statusCounts[perf.dataStatus] = (statusCounts[perf.dataStatus] || 0) + 1;
+              centralBankStatusCounts[perf.dataStatus] = (centralBankStatusCounts[perf.dataStatus] || 0) + 1;
             }
           });
           
-          // 打印数据状态统计
-          console.log('  数据状态统计:');
-          Object.entries(statusCounts).forEach(([status, count]) => {
+          // 统计M2趋势数据状态
+          const m2StatusCounts: Record<string, number> = {};
+          m2Trend.performances.forEach(perf => {
+            if (perf.dataStatus) {
+              m2StatusCounts[perf.dataStatus] = (m2StatusCounts[perf.dataStatus] || 0) + 1;
+            }
+          });
+          
+          // 打印央行趋势数据状态统计
+          console.log('  央行趋势数据状态统计:');
+          Object.entries(centralBankStatusCounts).forEach(([status, count]) => {
             const statusSymbol = status === DataAvailabilityStatus.AVAILABLE ? '✓' : 
                                status === DataAvailabilityStatus.TOO_EARLY ? '⌛' :
                                status === DataAvailabilityStatus.RATE_LIMITED ? '⚠' : '❗';
             console.log(`    ${statusSymbol} ${status}: ${count} 个期间`);
           });
           
-          // 存储到数据库
-          console.log(`  存储 ${asset.name} 的趋势数据到数据库...`);
-          const upsertResult = await this.assetTrendModel.findOneAndUpdate(
-            { assetId: asset.id },
-            assetTrend,
+          // 打印M2趋势数据状态统计
+          console.log('  M2趋势数据状态统计:');
+          Object.entries(m2StatusCounts).forEach(([status, count]) => {
+            const statusSymbol = status === DataAvailabilityStatus.AVAILABLE ? '✓' : 
+                               status === DataAvailabilityStatus.TOO_EARLY ? '⌛' :
+                               status === DataAvailabilityStatus.RATE_LIMITED ? '⚠' : '❗';
+            console.log(`    ${statusSymbol} ${status}: ${count} 个期间`);
+          });
+          
+          // 存储央行趋势数据到数据库
+          console.log(`  存储 ${asset.name} 的央行趋势数据到数据库...`);
+          const centralBankResult = await this.assetTrendModel.findOneAndUpdate(
+            { assetId: asset.id, trendType: 'centralBank' },
+            { ...centralBankTrend, trendType: 'centralBank' },
+            { upsert: true, new: true }
+          );
+          
+          // 存储M2趋势数据到数据库
+          console.log(`  存储 ${asset.name} 的M2趋势数据到数据库...`);
+          const m2Result = await this.assetTrendModel.findOneAndUpdate(
+            { assetId: asset.id, trendType: 'm2' },
+            { ...m2Trend, trendType: 'm2' },
             { upsert: true, new: true }
           );
           
@@ -187,7 +219,7 @@ export class AssetTrendService {
           
           // 更新进度
           processedAssets++;
-          results.push(upsertResult);
+          results.push(centralBankResult, m2Result);
           
           // 在处理下一个资产前等待1秒，避免请求过快
           if (index < assets.length - 1) {
@@ -203,7 +235,7 @@ export class AssetTrendService {
         }
       }
       
-      console.log(`处理完成! 成功处理了 ${results.length}/${totalAssets} 个资产的趋势数据`);
+      console.log(`处理完成! 成功处理了 ${results.length / 2}/${totalAssets} 个资产的趋势数据`);
       
       return results;
     } catch (error) {
@@ -216,10 +248,12 @@ export class AssetTrendService {
    * 计算单个资产在各趋势期间的表现
    * @param asset 资产对象，包含id、name、symbol、category和lagDays属性
    * @param trendPeriods 趋势期间数组
+   * @param trendType 趋势类型（'centralBank' 或 'm2'）
    */
   private async calculateAssetTrend(
     asset: BenchmarkAsset, 
-    trendPeriods: GliTrendPeriod[]
+    trendPeriods: GliTrendPeriod[],
+    trendType: 'centralBank' | 'm2' = 'centralBank'
   ): Promise<AssetTrend> {
     try {
       // 检查是否有趋势期间
@@ -230,7 +264,8 @@ export class AssetTrendService {
           assetSymbol: asset.symbol,
           category: asset.category,
           performances: [],
-          lastUpdated: new Date()
+          lastUpdated: new Date(),
+          trendType
         };
       }
 
@@ -269,7 +304,8 @@ export class AssetTrendService {
           assetSymbol: asset.symbol,
           category: asset.category,
           performances,
-          lastUpdated: new Date()
+          lastUpdated: new Date(),
+          trendType
         };
       }
 
@@ -324,7 +360,7 @@ export class AssetTrendService {
             );
             
             // 记录调整后的实际日期范围（用于调试）
-            this.logger.debug(`资产 ${asset.name} 趋势期间 ${period.startDate} 至 ${period.endDate} 已调整lagDays(${asset.lagDays})，` +
+            this.logger.debug(`${trendType} 资产 ${asset.name} 趋势期间 ${period.startDate} 至 ${period.endDate} 已调整lagDays(${asset.lagDays})，` +
               `实际查询范围: ${new Date(startDate).toISOString().split('T')[0]} 至 ${new Date(endDate).toISOString().split('T')[0]}`);
 
             if (periodCandles.length > 0) {
@@ -389,7 +425,8 @@ export class AssetTrendService {
         assetSymbol: asset.symbol,
         category: asset.category,
         performances,
-        lastUpdated: new Date()
+        lastUpdated: new Date(),
+        trendType
       };
     } catch (error) {
       this.logger.error(`计算资产 ${asset.name} 的趋势表现失败`, error);

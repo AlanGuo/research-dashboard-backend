@@ -561,22 +561,30 @@ export class GliService {
         processed.other_m2_total = otherM2Total;
       }
       
-      // 计算总量
-      let total = 0;
-      if (params.fed_active) total += processed.fed || 0;
-      if (params.rrp_active) total -= processed.rrp || 0;
-      if (params.tga_active) total -= processed.tga || 0;
-      if (params.ecb_active) total += processed.ecb || 0;
-      if (params.pbc_active) total += processed.pbc || 0;
-      if (params.boj_active) total += processed.boj || 0;
-      if (params.other_active) total += processed.other_cb_total || 0;
-      if (params.usa_active) total += processed.usa || 0;
-      if (params.europe_active) total += processed.eu || 0;
-      if (params.china_active) total += processed.china || 0;
-      if (params.japan_active) total += processed.japan || 0;
-      if (params.other_m2_active) total += processed.other_m2_total || 0;
+      // 计算央行总量
+      let central_bank_total = 0;
+      if (params.fed_active) central_bank_total += processed.fed || 0;
+      if (params.rrp_active) central_bank_total -= processed.rrp || 0;
+      if (params.tga_active) central_bank_total -= processed.tga || 0;
+      if (params.ecb_active) central_bank_total += processed.ecb || 0;
+      if (params.pbc_active) central_bank_total += processed.pbc || 0;
+      if (params.boj_active) central_bank_total += processed.boj || 0;
+      if (params.other_active) central_bank_total += processed.other_cb_total || 0;
       
-      processed.total = total;
+      // 计算M2总量
+      let m2_total = 0;
+      if (params.usa_active) m2_total += processed.usa || 0;
+      if (params.europe_active) m2_total += processed.eu || 0;
+      if (params.china_active) m2_total += processed.china || 0;
+      if (params.japan_active) m2_total += processed.japan || 0;
+      if (params.other_m2_active) m2_total += processed.other_m2_total || 0;
+      
+      // 添加央行总量和M2总量
+      processed.central_bank_total = central_bank_total;
+      processed.m2_total = m2_total;
+      processed.central_bank_div_m2_ratio = central_bank_total / m2_total;
+      
+      // 不再计算总的total值
       
       processedData.push(processed as GliDataPoint);
     }
@@ -585,21 +593,18 @@ export class GliService {
     return processedData;
   }
 
-  // 技术指标计算已移至前端
-  // calculateIndicators 和 calculateComponentIndicators 方法已移除
-
   // GLI趋势时段数据
-  public readonly gliTrendPeriods: GliTrendPeriod[] = [
-    { startDate: '2024-12-31', endDate: '2025-05-03', trend: 'up'},
+  public readonly centralBankTrendPeriods: GliTrendPeriod[] = [
+    { startDate: '2024-12-31', endDate: '2025-05-07', trend: 'up'},
     { startDate: '2024-09-17', endDate: '2024-12-31', trend: 'down'},
     { startDate: '2024-07-01', endDate: '2024-09-17', trend: 'up' },
     { startDate: '2024-01-02', endDate: '2024-07-01', trend: 'down' },
     { startDate: '2023-10-02', endDate: '2024-01-02', trend: 'up' },
     { startDate: '2023-04-04', endDate: '2023-10-02', trend: 'down' },
     { startDate: '2022-11-04', endDate: '2023-02-01', trend: 'up' },
-    { startDate: '2022-03-09', endDate: '2022-10-01', trend: 'down' },
-    { startDate: '2020-03-20', endDate: '2021-09-16', trend: 'up' },
-    { startDate: '2018-03-06', endDate: '2018-11-01', trend: 'down' },
+    { startDate: '2022-03-01', endDate: '2022-09-28', trend: 'down' },
+    { startDate: '2020-02-21', endDate: '2021-09-16', trend: 'up' },
+    { startDate: '2018-03-06', endDate: '2018-11-12', trend: 'down' },
     { startDate: '2016-12-30', endDate: '2018-03-06', trend: 'up' },
     { startDate: '2016-09-08', endDate: '2016-12-30', trend: 'down' },
     { startDate: '2016-01-29', endDate: '2016-09-08', trend: 'up' },
@@ -608,7 +613,29 @@ export class GliService {
     { startDate: '2008-12-31', endDate: '2009-03-10', trend: 'down' },
     { startDate: '2008-09-11', endDate: '2008-12-31', trend: 'up' },
     { startDate: '2008-08-01', endDate: '2008-09-11', trend: 'down' },
-    { startDate: '2007-06-29', endDate: '2008-08-01', trend: 'up' },
+    { startDate: '2007-06-15', endDate: '2008-08-01', trend: 'up' },
+  ];
+
+  public readonly m2TrendPeriods: GliTrendPeriod[] = [
+    { startDate: '2025-01-13', endDate: '2025-05-07', trend: 'up'},
+    { startDate: '2024-10-01', endDate: '2025-01-13', trend: 'down' },
+    { startDate: '2023-11-01', endDate: '2024-10-01', trend: 'up' },
+    { startDate: '2022-11-04', endDate: '2023-02-02', trend: 'up' },
+    { startDate: '2022-04-01', endDate: '2022-11-04', trend: 'down' },
+    { startDate: '2020-03-20', endDate: '2022-03-01', trend: 'up' },
+    { startDate: '2018-11-12', endDate: '2020-02-20', trend: 'up' },
+    { startDate: '2018-04-12', endDate: '2018-11-12', trend: 'down' },
+    { startDate: '2016-12-16', endDate: '2018-04-12', trend: 'up' },
+    { startDate: '2016-10-04', endDate: '2016-12-16', trend: 'down' },
+    { startDate: '2015-03-16', endDate: '2016-10-04', trend: 'up' },
+    { startDate: '2014-07-02', endDate: '2015-03-16', trend: 'down' },
+    { startDate: '2010-06-07', endDate: '2014-07-02', trend: 'up' },
+    { startDate: '2009-12-01', endDate: '2010-06-07', trend: 'down' },
+    { startDate: '2009-02-27', endDate: '2009-12-01', trend: 'up' },
+    { startDate: '2008-12-18', endDate: '2009-02-27', trend: 'down' },
+    { startDate: '2008-10-29', endDate: '2008-12-18', trend: 'up' },
+    { startDate: '2008-07-16', endDate: '2008-10-29', trend: 'down' },
+    { startDate: '2007-06-15', endDate: '2008-07-16', trend: 'up' },
   ];
 
   // 获取GLI趋势时段
@@ -618,7 +645,7 @@ export class GliService {
       const apiParams: GliParamsDto = {
         // 强制使用日线数据，忽略传入的interval
         interval: '1D',
-        // 保证能获取到覆盖gliTrendPeriods的所有kline
+        // 保证能获取到覆盖所有趋势时段的数据
         limit: 6500,
         // 保留其他参数
         fed_active: params.fed_active,
@@ -641,7 +668,10 @@ export class GliService {
         console.warn('无法获取GLI数据来计算趋势时段的百分比变化');
         return {
           success: true,
-          data: this.gliTrendPeriods,
+          data: {
+            centralBankTrendPeriods: this.centralBankTrendPeriods,
+            m2TrendPeriods: this.m2TrendPeriods
+          },
           timestamp: new Date().toISOString()
         };
       }
@@ -649,8 +679,8 @@ export class GliService {
       // 按时间戳从旧到新排序
       const sortedData = [...gliResponse.data].sort((a, b) => a.timestamp - b.timestamp);
       
-      // 为每个趋势时段计算百分比变化
-      const periodsWithChanges = this.gliTrendPeriods.map(period => {
+      // 计算央行总负债趋势时段的百分比变化
+      const centralBankPeriodsWithChanges = this.centralBankTrendPeriods.map(period => {
         const startDate = new Date(period.startDate);
         const endDate = new Date(period.endDate);
         const startTimestamp = startDate.getTime();
@@ -690,10 +720,63 @@ export class GliService {
           endPoint = sortedData[sortedData.length - 1];
         }
         
-        // 计算涨跌幅
+        // 计算央行总负债的涨跌幅
         let percentChange: number | undefined;
-        if (startPoint && endPoint && startPoint.total > 0) {
-          percentChange = ((endPoint.total - startPoint.total) / startPoint.total) * 100;
+        if (startPoint && endPoint && startPoint.central_bank_total && startPoint.central_bank_total > 0) {
+          percentChange = ((endPoint.central_bank_total - startPoint.central_bank_total) / startPoint.central_bank_total) * 100;
+        }
+        
+        return {
+          ...period,
+          percentChange
+        };
+      });
+      
+      // 计算M2趋势时段的百分比变化
+      const m2PeriodsWithChanges = this.m2TrendPeriods.map(period => {
+        const startDate = new Date(period.startDate);
+        const endDate = new Date(period.endDate);
+        const startTimestamp = startDate.getTime();
+        const endTimestamp = endDate.getTime();
+        
+        // 找到最接近开始日期和结束日期的数据点
+        let startPoint: GliDataPoint | undefined;
+        let endPoint: GliDataPoint | undefined;
+        
+        // 查找最接近开始日期的点（不超过开始日期）
+        for (let i = 0; i < sortedData.length; i++) {
+          if (sortedData[i].timestamp <= startTimestamp) {
+            startPoint = sortedData[i];
+          } else {
+            // 一旦超过开始日期，就停止查找
+            break;
+          }
+        }
+        
+        // 查找最接近结束日期的点（不超过结束日期）
+        for (let i = 0; i < sortedData.length; i++) {
+          if (sortedData[i].timestamp <= endTimestamp) {
+            endPoint = sortedData[i];
+          } else {
+            // 一旦超过结束日期，就停止查找
+            break;
+          }
+        }
+        
+        // 如果没有找到开始点，但找到了结束点，使用第一个数据点作为开始点
+        if (!startPoint && endPoint && sortedData.length > 0) {
+          startPoint = sortedData[0];
+        }
+        
+        // 如果没有找到结束点，但找到了开始点，使用最后一个数据点作为结束点
+        if (startPoint && !endPoint && sortedData.length > 0) {
+          endPoint = sortedData[sortedData.length - 1];
+        }
+        
+        // 计算M2总量的涨跌幅
+        let percentChange: number | undefined;
+        if (startPoint && endPoint && startPoint.m2_total && startPoint.m2_total > 0) {
+          percentChange = ((endPoint.m2_total - startPoint.m2_total) / startPoint.m2_total) * 100;
         }
         
         return {
@@ -704,15 +787,21 @@ export class GliService {
       
       return {
         success: true,
-        data: periodsWithChanges,
+        data: {
+          centralBankTrendPeriods: centralBankPeriodsWithChanges,
+          m2TrendPeriods: m2PeriodsWithChanges
+        },
         timestamp: new Date().toISOString()
       };
     } catch (error) {
-      console.error('计算GLI趋势时段的百分比变化时出错:', error);
+      console.error('计算趋势时段的百分比变化时出错:', error);
       // 出错时返回原始数据
       return {
         success: true,
-        data: this.gliTrendPeriods,
+        data: {
+          centralBankTrendPeriods: this.centralBankTrendPeriods,
+          m2TrendPeriods: this.m2TrendPeriods
+        },
         timestamp: new Date().toISOString()
       };
     }

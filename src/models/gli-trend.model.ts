@@ -8,7 +8,10 @@ export interface GliTrendPeriod {
 
 export interface GliTrendResponse {
   success: boolean;
-  data: GliTrendPeriod[];
+  data: {
+    centralBankTrendPeriods: GliTrendPeriod[];
+    m2TrendPeriods: GliTrendPeriod[];
+  };
   timestamp: string;
   error?: string;
   errors?: any[];

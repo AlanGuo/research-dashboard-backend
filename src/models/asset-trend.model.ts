@@ -1,4 +1,5 @@
 import { Schema, model } from 'mongoose';
+import { TrendType } from './trend-type.enum';
 
 // 单个趋势期间的资产表现
 export interface AssetPerformance {
@@ -20,6 +21,8 @@ export interface AssetTrend {
   category: string;     // 资产类别
   performances: AssetPerformance[]; // 在各个趋势期间的表现
   lastUpdated: Date;    // 最后更新时间
+  trendType?: string;   // 趋势类型（'centralBank' 或 'm2'）
+  temporary?: boolean;  // 是否为临时计算结果
 }
 
 // 创建 Schema
@@ -40,11 +43,13 @@ const AssetTrendSchema = new Schema<AssetTrend>({
   assetSymbol: { type: String, required: true },
   category: { type: String, required: true },
   performances: [AssetPerformanceSchema],
-  lastUpdated: { type: Date, default: Date.now }
+  lastUpdated: { type: Date, default: Date.now },
+  trendType: { type: String, enum: Object.values(TrendType), default: TrendType.CENTRAL_BANK },
+  temporary: { type: Boolean, default: false }
 });
 
-// 创建复合索引，确保每个资产只有一条记录
-// AssetTrendSchema.index({ assetId: 1 }, { unique: true });
+// 创建复合索引，确保每个资产在每种趋势类型下只有一条记录
+AssetTrendSchema.index({ assetId: 1, trendType: 1 }, { unique: true });
 
 // 创建模型
 export const AssetTrendModel = model<AssetTrend>(
@@ -59,4 +64,5 @@ export interface AssetTrendResponse {
   timestamp: string;
   message?: string;
   temporary?: boolean; // 标记是否为临时计算的结果
+  trendType?: string; // 趋势类型
 }

@@ -41,7 +41,10 @@ export class GliController {
         error: 'Invalid parameters',
         errors,
         timestamp: new Date().toISOString(),
-        data: []
+        data: {
+          centralBankTrendPeriods: [],
+          m2TrendPeriods: []
+        }
       };
     }
     

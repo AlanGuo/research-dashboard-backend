@@ -12,14 +12,15 @@ export class AssetTrendController {
    */
   @Get()
   public async getAllAssetTrends(
-    @Query('forceUpdate') forceUpdate?: string
+    @Query('forceUpdate') forceUpdate?: string,
+    @Query('trendType') trendType: 'centralBank' | 'm2' = 'centralBank'
   ): Promise<AssetTrendResponse> {
     try {
       // 检查是否需要强制更新
       const shouldForceUpdate = forceUpdate === 'true';
       
       // 尝试从数据库获取数据
-      let trends = await this.assetTrendService.getAllAssetTrends();
+      let trends = await this.assetTrendService.getAllAssetTrends(trendType);
       
       // 如果数据库中没有数据或需要强制更新，则计算并存储
       if (trends.length === 0 || shouldForceUpdate) {
@@ -49,14 +50,15 @@ export class AssetTrendController {
   @Get(':assetId')
   public async getAssetTrend(
     @Param('assetId') assetId: string,
-    @Query('forceUpdate') forceUpdate?: string
+    @Query('forceUpdate') forceUpdate?: string,
+    @Query('trendType') trendType: 'centralBank' | 'm2' = 'centralBank'
   ): Promise<AssetTrendResponse> {
     try {
       // 检查是否需要强制更新
       const shouldForceUpdate = forceUpdate === 'true';
       
       // 尝试从数据库获取数据
-      let trend = await this.assetTrendService.getAssetTrend(assetId);
+      let trend = await this.assetTrendService.getAssetTrend(assetId, trendType);
       
       // 如果数据库中没有数据或需要强制更新，则计算并存储所有资产数据
       if (!trend || shouldForceUpdate) {
@@ -119,20 +121,22 @@ export class AssetTrendController {
   /**
    * 临时计算资产在特定滞后天数下的趋势表现，不更新数据库
    * @param assetId 资产ID
-   * @param body 请求体，包含intervalType和intervalCount
+   * @param query 查询参数，包含intervalType、intervalCount和trendType
    */
   @Get(':assetId/lag-days')
   public async updateAssetLagDays(
     @Param('assetId') assetId: string,
-    @Query() query: { intervalType: string; intervalCount: number }
+    @Query() query: { intervalType: string; intervalCount: number; trendType?: 'centralBank' | 'm2' }
   ): Promise<AssetTrendResponse> {
     try {
-      this.logger.log(`开始临时计算资产 ${assetId} 在特定滞后天数下的趋势表现，间隔类型: ${query.intervalType}, 间隔数量: ${query.intervalCount}`);
+      const trendType = query.trendType || 'centralBank';
+      this.logger.log(`开始临时计算资产 ${assetId} 在特定滞后天数下的${trendType}趋势表现，间隔类型: ${query.intervalType}, 间隔数量: ${query.intervalCount}`);
       
       const tempTrend = await this.assetTrendService.updateAssetLagDays(
         assetId,
         query.intervalType,
-        query.intervalCount
+        query.intervalCount,
+        trendType as 'centralBank' | 'm2'
       );
       
       if (tempTrend) {
@@ -149,8 +153,9 @@ export class AssetTrendController {
           success: true,
           data: tempTrend,
           timestamp: new Date().toISOString(),
-          message: `已临时计算资产 ${assetId} 在 ${lagDays} 天滞后下的趋势表现`,
-          temporary: true
+          message: `已临时计算资产 ${assetId} 在 ${lagDays} 天滞后下的${trendType}趋势表现`,
+          temporary: true,
+          trendType: trendType
         };
       } else {
         return {

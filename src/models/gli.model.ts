@@ -47,8 +47,10 @@ export interface GliDataPoint {
   raw_china?: number; // 中国M2原始数据
   raw_japan?: number; // 日本M2原始数据
   
-  // Total
-  total: number;
+  // Total values
+  central_bank_total?: number;
+  m2_total?: number;
+  central_bank_div_m2_ratio?: number;
 }
 
 export interface GliResponse {
