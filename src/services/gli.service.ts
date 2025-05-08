@@ -614,6 +614,7 @@ export class GliService {
     { startDate: '2008-09-11', endDate: '2008-12-31', trend: 'up' },
     { startDate: '2008-08-01', endDate: '2008-09-11', trend: 'down' },
     { startDate: '2007-06-15', endDate: '2008-08-01', trend: 'up' },
+    { startDate: '2002-12-24', endDate: '2004-12-03', trend: 'up' },
   ];
 
   public readonly m2TrendPeriods: GliTrendPeriod[] = [
@@ -635,7 +636,12 @@ export class GliService {
     { startDate: '2008-12-18', endDate: '2009-02-27', trend: 'down' },
     { startDate: '2008-10-29', endDate: '2008-12-18', trend: 'up' },
     { startDate: '2008-07-16', endDate: '2008-10-29', trend: 'down' },
-    { startDate: '2007-06-15', endDate: '2008-07-16', trend: 'up' },
+    { startDate: '2007-06-28', endDate: '2008-07-16', trend: 'up' },
+    { startDate: '2005-12-06', endDate: '2007-04-30', trend: 'up' },
+    { startDate: '2004-12-30', endDate: '2005-12-06', trend: 'down' },
+    { startDate: '2002-10-21', endDate: '2004-02-12', trend: 'up' },
+    { startDate: '2002-03-26', endDate: '2002-07-17', trend: 'up' },
+    { startDate: '2001-09-20', endDate: '2002-01-26', trend: 'down' },
   ];
 
   // 获取GLI趋势时段
@@ -646,7 +652,7 @@ export class GliService {
         // 强制使用日线数据，忽略传入的interval
         interval: '1D',
         // 保证能获取到覆盖所有趋势时段的数据
-        limit: 6500,
+        limit: 10000,
         // 保留其他参数
         fed_active: params.fed_active,
         rrp_active: params.rrp_active,
