@@ -2,7 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { AssetTrend } from '../models/asset-trend.model';
-import { TrendType } from '../models/trend-type.enum';
 import { GliTrendPeriod } from '../models/gli-trend.model';
 import { TradingViewService } from './tradingview.service';
 import { BenchmarkAsset, BenchmarkService } from './benchmark.service';

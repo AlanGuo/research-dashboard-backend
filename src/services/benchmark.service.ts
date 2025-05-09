@@ -14,17 +14,17 @@ export class BenchmarkService {
   private readonly benchmarks: BenchmarkAsset[] = [
     // 加密货币
     {
-      id: 'btcusdt',
+      id: 'btcusd',
       name: '比特币',
-      symbol: 'BTCUSDT',
+      symbol: 'BTCUSD',
       category: 'crypto',
       color: '#f7931a',
       lagDays: 90
     },
     {
-      id: 'ethusdt',
+      id: 'ethusd',
       name: '以太坊',
-      symbol: 'ETHUSDT',
+      symbol: 'ETHUSD',
       category: 'crypto',
       color: '#627eea',
       lagDays: 90
@@ -34,7 +34,7 @@ export class BenchmarkService {
     {
       id: 'gold',
       name: '黄金',
-      symbol: 'GOLD',
+      symbol: 'XAUUSD',
       category: 'precious_metals',
       color: '#ffd700',
       lagDays: 90
@@ -42,7 +42,7 @@ export class BenchmarkService {
     {
       id: 'silver',
       name: '白银',
-      symbol: 'SILVER',
+      symbol: 'XAGUSD',
       category: 'precious_metals',
       color: '#c0c0c0',
       lagDays: 90
@@ -52,7 +52,7 @@ export class BenchmarkService {
     {
       id: 'copper',
       name: '铜',
-      symbol: 'COPPER',
+      symbol: 'XCUUSD',
       category: 'commodities',
       color: '#b87333',
       lagDays: 90
