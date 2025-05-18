@@ -7,6 +7,7 @@ import { GliModule } from './modules/gli.module';
 import { TradingViewModule } from './modules/tradingview.module';
 import { BenchmarkModule } from './modules/benchmark.module';
 import { AssetTrendModule } from './modules/asset-trend.module';
+import { HowellLiquidityModule } from './modules/howell-liquidity.module';
 import { MongooseModule } from '@nestjs/mongoose';
 
 @Module({
@@ -25,7 +26,8 @@ import { MongooseModule } from '@nestjs/mongoose';
     GliModule, 
     TradingViewModule, 
     BenchmarkModule, 
-    AssetTrendModule
+    AssetTrendModule,
+    HowellLiquidityModule
   ],
   controllers: [AppController],
   providers: [AppService],
