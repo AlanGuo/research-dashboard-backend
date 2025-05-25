@@ -19,7 +19,7 @@ export class GliService {
           data: [],
           timestamp: new Date().toISOString(),
           params,
-          message: 'No data available from data sources'
+          message: 'No data available from data sources',
         };
       }
 
@@ -30,7 +30,7 @@ export class GliService {
         success: true,
         data: processedData,
         timestamp: new Date().toISOString(),
-        params
+        params,
       };
     } catch (error) {
       console.error(`Error calculating GLI:`, error);
@@ -46,7 +46,7 @@ export class GliService {
     const symbols = this.getRequiredSymbols(params);
 
     // Map the interval parameter to TradingView format
-    const interval = params.interval || "1D";
+    const interval = params.interval || '1D';
     const limit = params.limit || 100;
     const from = params.from;
 
@@ -58,12 +58,13 @@ export class GliService {
     }
 
     // Fetch data for all symbols in parallel
-    const promises = symbols.map(symbol =>
-      this.tradingViewService.getKlineData(symbol, interval, limit, from)
-        .catch(error => {
+    const promises = symbols.map((symbol) =>
+      this.tradingViewService
+        .getKlineData(symbol, interval, limit, from)
+        .catch((error) => {
           console.error(`Error fetching data for ${symbol}:`, error);
           return null; // Return null for failed requests
-        })
+        }),
     );
 
     const results = await Promise.all(promises);
@@ -172,7 +173,7 @@ export class GliService {
     }
 
     // Add needed exchange rates to the symbols list
-    exchangeRatesNeeded.forEach(rate => {
+    exchangeRatesNeeded.forEach((rate) => {
       symbols.push(rate);
     });
 
@@ -187,7 +188,12 @@ export class GliService {
    * @param interval 时间间隔（1D, 1W, 1M等），默认1D
    * @returns 对齐后的数据点数组
    */
-  private alignDataByTimestamp(dataMap: Map<string, any>, limit: number = 10, from?: number, interval: string = '1D'): any[] {
+  private alignDataByTimestamp(
+    dataMap: Map<string, any>,
+    limit: number = 10,
+    from?: number,
+    interval: string = '1D',
+  ): any[] {
     // 标准化interval为大写
     const normalizedInterval = interval.toUpperCase();
 
@@ -210,10 +216,10 @@ export class GliService {
     // 生成我们需要的时间范围（从新到旧）
     const timestamps: number[] = [];
     const now = new Date().getTime();
-    const startTime = from || (now - (limit * intervalMs)); // 根据interval计算起始时间
+    const startTime = from || now - limit * intervalMs; // 根据interval计算起始时间
 
     // 生成时间戳（基于限制或者起始时间）
-    const endTime = from ? (from + (limit * intervalMs)) : now;
+    const endTime = from ? from + limit * intervalMs : now;
 
     // 根据interval生成时间戳，从新到旧排序
     for (let t = endTime; t >= startTime; t -= intervalMs) {
@@ -246,7 +252,9 @@ export class GliService {
     dataMap.forEach((data, symbol) => {
       if (data && data.candles && data.candles.length > 0) {
         // 按时间戳排序（从新到旧）
-        const sortedCandles = [...data.candles].sort((a, b) => b.timestamp - a.timestamp);
+        const sortedCandles = [...data.candles].sort(
+          (a, b) => b.timestamp - a.timestamp,
+        );
         sortedCandlesMap.set(symbol, sortedCandles);
       }
     });
@@ -260,7 +268,9 @@ export class GliService {
       sortedCandlesMap.forEach((sortedCandles, symbol) => {
         // 找到小于等于当前时间戳的最新数据
         // 这确保了我们使用的是当前时间戳或之前的最新数据
-        const latestCandle = sortedCandles.find(candle => candle.timestamp <= timestamp);
+        const latestCandle = sortedCandles.find(
+          (candle) => candle.timestamp <= timestamp,
+        );
 
         if (latestCandle) {
           // 使用最新的数据
@@ -297,7 +307,7 @@ export class GliService {
     exchangeRate: number,
     missingDataSymbols: Set<string>,
     processed?: Partial<GliDataPoint>,
-    targetField?: string
+    targetField?: string,
   ): number {
     const value = dataPoint[symbolName];
 
@@ -338,7 +348,7 @@ export class GliService {
     targetField: string,
     isActive: boolean,
     missingDataSymbols: Set<string>,
-    exchangeRate?: number
+    exchangeRate?: number,
   ): void {
     if (!isActive) return;
 
@@ -417,7 +427,7 @@ export class GliService {
 
       // 添加需要的汇率
       const rates: Record<string, number> = {};
-      neededRates.forEach(rate => {
+      neededRates.forEach((rate) => {
         const upperRate = rate.toUpperCase();
         if (!dataPoint[upperRate] && !missingDataSymbols.has(upperRate)) {
           missingDataSymbols.add(upperRate);
@@ -432,19 +442,64 @@ export class GliService {
       });
 
       // 提取激活的央行数据
-      this.processSymbolData(dataPoint, processed, 'USCBBS', 'fed', params.fed_active, missingDataSymbols);
-      this.processSymbolData(dataPoint, processed, 'RRPONTSYD', 'rrp', params.rrp_active, missingDataSymbols);
-      this.processSymbolData(dataPoint, processed, 'WTREGEN', 'tga', params.tga_active, missingDataSymbols);
+      this.processSymbolData(
+        dataPoint,
+        processed,
+        'USCBBS',
+        'fed',
+        params.fed_active,
+        missingDataSymbols,
+      );
+      this.processSymbolData(
+        dataPoint,
+        processed,
+        'RRPONTSYD',
+        'rrp',
+        params.rrp_active,
+        missingDataSymbols,
+      );
+      this.processSymbolData(
+        dataPoint,
+        processed,
+        'WTREGEN',
+        'tga',
+        params.tga_active,
+        missingDataSymbols,
+      );
 
       // 处理需要汇率转换的央行数据
       if (params.ecb_active) {
-        this.processSymbolData(dataPoint, processed, 'EUCBBS', 'ecb', true, missingDataSymbols, processed.eurusd);
+        this.processSymbolData(
+          dataPoint,
+          processed,
+          'EUCBBS',
+          'ecb',
+          true,
+          missingDataSymbols,
+          processed.eurusd,
+        );
       }
       if (params.pbc_active) {
-        this.processSymbolData(dataPoint, processed, 'CNCBBS', 'pbc', true, missingDataSymbols, processed.cnyusd);
+        this.processSymbolData(
+          dataPoint,
+          processed,
+          'CNCBBS',
+          'pbc',
+          true,
+          missingDataSymbols,
+          processed.cnyusd,
+        );
       }
       if (params.boj_active) {
-        this.processSymbolData(dataPoint, processed, 'JPCBBS', 'boj', true, missingDataSymbols, processed.jpyusd);
+        this.processSymbolData(
+          dataPoint,
+          processed,
+          'JPCBBS',
+          'boj',
+          true,
+          missingDataSymbols,
+          processed.jpyusd,
+        );
       }
 
       // 其他央行数据
@@ -453,65 +508,173 @@ export class GliService {
         let otherCbTotal = 0;
 
         // 英国央行
-        const boe = this.getSymbolValueWithRate(dataPoint, 'GBCBBS', processed.gbpusd, missingDataSymbols, processed, 'boe');
+        const boe = this.getSymbolValueWithRate(
+          dataPoint,
+          'GBCBBS',
+          processed.gbpusd,
+          missingDataSymbols,
+          processed,
+          'boe',
+        );
         otherCbTotal += boe;
 
         // 加拿大央行
-        const boc = this.getSymbolValueWithRate(dataPoint, 'CACBBS', processed.cadusd, missingDataSymbols, processed, 'boc');
+        const boc = this.getSymbolValueWithRate(
+          dataPoint,
+          'CACBBS',
+          processed.cadusd,
+          missingDataSymbols,
+          processed,
+          'boc',
+        );
         otherCbTotal += boc;
 
         // 澳大利亚央行
-        const rba = this.getSymbolValueWithRate(dataPoint, 'AUCBBS', processed.audusd, missingDataSymbols, processed, 'rba');
+        const rba = this.getSymbolValueWithRate(
+          dataPoint,
+          'AUCBBS',
+          processed.audusd,
+          missingDataSymbols,
+          processed,
+          'rba',
+        );
         otherCbTotal += rba;
 
         // 印度央行
-        const rbi = this.getSymbolValueWithRate(dataPoint, 'INCBBS', processed.inrusd, missingDataSymbols, processed, 'rbi');
+        const rbi = this.getSymbolValueWithRate(
+          dataPoint,
+          'INCBBS',
+          processed.inrusd,
+          missingDataSymbols,
+          processed,
+          'rbi',
+        );
         otherCbTotal += rbi;
 
         // 瑞士央行
-        const snb = this.getSymbolValueWithRate(dataPoint, 'CHCBBS', processed.chfusd, missingDataSymbols, processed, 'snb');
+        const snb = this.getSymbolValueWithRate(
+          dataPoint,
+          'CHCBBS',
+          processed.chfusd,
+          missingDataSymbols,
+          processed,
+          'snb',
+        );
         otherCbTotal += snb;
 
         // 俄罗斯央行
-        const cbr = this.getSymbolValueWithRate(dataPoint, 'RUCBBS', processed.rubusd, missingDataSymbols, processed, 'cbr');
+        const cbr = this.getSymbolValueWithRate(
+          dataPoint,
+          'RUCBBS',
+          processed.rubusd,
+          missingDataSymbols,
+          processed,
+          'cbr',
+        );
         otherCbTotal += cbr;
 
         // 巴西央行
-        const bcb = this.getSymbolValueWithRate(dataPoint, 'BRCBBS', processed.brlusd, missingDataSymbols, processed, 'bcb');
+        const bcb = this.getSymbolValueWithRate(
+          dataPoint,
+          'BRCBBS',
+          processed.brlusd,
+          missingDataSymbols,
+          processed,
+          'bcb',
+        );
         otherCbTotal += bcb;
 
         // 韩国央行
-        const bok = this.getSymbolValueWithRate(dataPoint, 'KRCBBS', processed.krwusd, missingDataSymbols, processed, 'bok');
+        const bok = this.getSymbolValueWithRate(
+          dataPoint,
+          'KRCBBS',
+          processed.krwusd,
+          missingDataSymbols,
+          processed,
+          'bok',
+        );
         otherCbTotal += bok;
 
         // 新西兰央行
-        const rbzn = this.getSymbolValueWithRate(dataPoint, 'NZCBBS', processed.audusd, missingDataSymbols, processed, 'rbzn');
+        const rbzn = this.getSymbolValueWithRate(
+          dataPoint,
+          'NZCBBS',
+          processed.audusd,
+          missingDataSymbols,
+          processed,
+          'rbzn',
+        );
         otherCbTotal += rbzn;
 
         // 瑞典央行
-        const sr = this.getSymbolValueWithRate(dataPoint, 'SECBBS', processed.sekusd, missingDataSymbols, processed, 'sr');
+        const sr = this.getSymbolValueWithRate(
+          dataPoint,
+          'SECBBS',
+          processed.sekusd,
+          missingDataSymbols,
+          processed,
+          'sr',
+        );
         otherCbTotal += sr;
 
         // 马来西亚央行
-        const bnm = this.getSymbolValueWithRate(dataPoint, 'MYCBBS', processed.myrusd, missingDataSymbols, processed, 'bnm');
+        const bnm = this.getSymbolValueWithRate(
+          dataPoint,
+          'MYCBBS',
+          processed.myrusd,
+          missingDataSymbols,
+          processed,
+          'bnm',
+        );
         otherCbTotal += bnm;
 
         processed.other_cb_total = otherCbTotal;
       }
 
       // 货币供应数据
-      this.processSymbolData(dataPoint, processed, 'ECONOMICS:USM2', 'usa', params.usa_active, missingDataSymbols);
+      this.processSymbolData(
+        dataPoint,
+        processed,
+        'ECONOMICS:USM2',
+        'usa',
+        params.usa_active,
+        missingDataSymbols,
+      );
 
       if (params.europe_active) {
-        this.processSymbolData(dataPoint, processed, 'ECONOMICS:EUM2', 'eu', true, missingDataSymbols, processed.eurusd);
+        this.processSymbolData(
+          dataPoint,
+          processed,
+          'ECONOMICS:EUM2',
+          'eu',
+          true,
+          missingDataSymbols,
+          processed.eurusd,
+        );
       }
 
       if (params.china_active) {
-        this.processSymbolData(dataPoint, processed, 'ECONOMICS:CNM2', 'china', true, missingDataSymbols, processed.cnyusd);
+        this.processSymbolData(
+          dataPoint,
+          processed,
+          'ECONOMICS:CNM2',
+          'china',
+          true,
+          missingDataSymbols,
+          processed.cnyusd,
+        );
       }
 
       if (params.japan_active) {
-        this.processSymbolData(dataPoint, processed, 'ECONOMICS:JPM2', 'japan', true, missingDataSymbols, processed.jpyusd);
+        this.processSymbolData(
+          dataPoint,
+          processed,
+          'ECONOMICS:JPM2',
+          'japan',
+          true,
+          missingDataSymbols,
+          processed.jpyusd,
+        );
       }
 
       // 其他 M2 数据
@@ -520,43 +683,134 @@ export class GliService {
         let otherM2Total = 0;
 
         // 英国M2
-        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:GBM2', processed.gbpusd, missingDataSymbols, processed, 'gbm2');
+        otherM2Total += this.getSymbolValueWithRate(
+          dataPoint,
+          'ECONOMICS:GBM2',
+          processed.gbpusd,
+          missingDataSymbols,
+          processed,
+          'gbm2',
+        );
 
         // 加拿大M2
-        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:CAM2', processed.cadusd, missingDataSymbols, processed, 'cam2');
+        otherM2Total += this.getSymbolValueWithRate(
+          dataPoint,
+          'ECONOMICS:CAM2',
+          processed.cadusd,
+          missingDataSymbols,
+          processed,
+          'cam2',
+        );
 
         // 澳大利亚M3
-        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:AUM3', processed.audusd, missingDataSymbols, processed, 'aum3');
+        otherM2Total += this.getSymbolValueWithRate(
+          dataPoint,
+          'ECONOMICS:AUM3',
+          processed.audusd,
+          missingDataSymbols,
+          processed,
+          'aum3',
+        );
 
         // 印度M2
-        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:INM2', processed.inrusd, missingDataSymbols, processed, 'inm2');
+        otherM2Total += this.getSymbolValueWithRate(
+          dataPoint,
+          'ECONOMICS:INM2',
+          processed.inrusd,
+          missingDataSymbols,
+          processed,
+          'inm2',
+        );
 
         // 瑞士M2
-        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:CHM2', processed.chfusd, missingDataSymbols, processed, 'chm2');
+        otherM2Total += this.getSymbolValueWithRate(
+          dataPoint,
+          'ECONOMICS:CHM2',
+          processed.chfusd,
+          missingDataSymbols,
+          processed,
+          'chm2',
+        );
 
         // 俄罗斯M2
-        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:RUM2', processed.rubusd, missingDataSymbols, processed, 'rum2');
+        otherM2Total += this.getSymbolValueWithRate(
+          dataPoint,
+          'ECONOMICS:RUM2',
+          processed.rubusd,
+          missingDataSymbols,
+          processed,
+          'rum2',
+        );
 
         // 巴西M2
-        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:BRM2', processed.brlusd, missingDataSymbols, processed, 'brm2');
+        otherM2Total += this.getSymbolValueWithRate(
+          dataPoint,
+          'ECONOMICS:BRM2',
+          processed.brlusd,
+          missingDataSymbols,
+          processed,
+          'brm2',
+        );
 
         // 韩国M2
-        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:KRM2', processed.krwusd, missingDataSymbols, processed, 'krm2');
+        otherM2Total += this.getSymbolValueWithRate(
+          dataPoint,
+          'ECONOMICS:KRM2',
+          processed.krwusd,
+          missingDataSymbols,
+          processed,
+          'krm2',
+        );
 
         // 墨西哥M2
-        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:MXM2', processed.mxnusd, missingDataSymbols, processed, 'mxm2');
+        otherM2Total += this.getSymbolValueWithRate(
+          dataPoint,
+          'ECONOMICS:MXM2',
+          processed.mxnusd,
+          missingDataSymbols,
+          processed,
+          'mxm2',
+        );
 
         // 印尼M2
-        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:IDM2', processed.idrusd, missingDataSymbols, processed, 'idm2');
+        otherM2Total += this.getSymbolValueWithRate(
+          dataPoint,
+          'ECONOMICS:IDM2',
+          processed.idrusd,
+          missingDataSymbols,
+          processed,
+          'idm2',
+        );
 
         // 南非M2
-        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:ZAM2', processed.zarusd, missingDataSymbols, processed, 'zam2');
+        otherM2Total += this.getSymbolValueWithRate(
+          dataPoint,
+          'ECONOMICS:ZAM2',
+          processed.zarusd,
+          missingDataSymbols,
+          processed,
+          'zam2',
+        );
 
         // 马来西亚M2
-        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:MYM2', processed.myrusd, missingDataSymbols, processed, 'mym2');
+        otherM2Total += this.getSymbolValueWithRate(
+          dataPoint,
+          'ECONOMICS:MYM2',
+          processed.myrusd,
+          missingDataSymbols,
+          processed,
+          'mym2',
+        );
 
         // 瑞典M2
-        otherM2Total += this.getSymbolValueWithRate(dataPoint, 'ECONOMICS:SEM2', processed.sekusd, missingDataSymbols, processed, 'sem2');
+        otherM2Total += this.getSymbolValueWithRate(
+          dataPoint,
+          'ECONOMICS:SEM2',
+          processed.sekusd,
+          missingDataSymbols,
+          processed,
+          'sem2',
+        );
 
         processed.other_m2_total = otherM2Total;
       }
@@ -569,7 +823,8 @@ export class GliService {
       if (params.ecb_active) central_bank_total += processed.ecb || 0;
       if (params.pbc_active) central_bank_total += processed.pbc || 0;
       if (params.boj_active) central_bank_total += processed.boj || 0;
-      if (params.other_active) central_bank_total += processed.other_cb_total || 0;
+      if (params.other_active)
+        central_bank_total += processed.other_cb_total || 0;
 
       // 计算M2总量
       let m2_total = 0;
@@ -595,8 +850,8 @@ export class GliService {
 
   // GLI趋势时段数据
   public readonly centralBankTrendPeriods: GliTrendPeriod[] = [
-    { startDate: '2024-12-31', endDate: '2025-05-26', trend: 'up'},
-    { startDate: '2024-09-17', endDate: '2024-12-31', trend: 'down'},
+    { startDate: '2024-12-31', endDate: '2025-05-26', trend: 'up' },
+    { startDate: '2024-09-17', endDate: '2024-12-31', trend: 'down' },
     { startDate: '2024-07-01', endDate: '2024-09-17', trend: 'up' },
     { startDate: '2024-01-02', endDate: '2024-07-01', trend: 'down' },
     { startDate: '2023-10-02', endDate: '2024-01-02', trend: 'up' },
@@ -618,7 +873,7 @@ export class GliService {
   ];
 
   public readonly m2TrendPeriods: GliTrendPeriod[] = [
-    { startDate: '2025-01-13', endDate: '2025-05-26', trend: 'up'},
+    { startDate: '2025-01-13', endDate: '2025-05-26', trend: 'up' },
     { startDate: '2024-10-01', endDate: '2025-01-13', trend: 'down' },
     { startDate: '2023-11-01', endDate: '2024-10-01', trend: 'up' },
     { startDate: '2022-11-04', endDate: '2023-02-02', trend: 'up' },
@@ -665,81 +920,97 @@ export class GliService {
         europe_active: params.europe_active,
         china_active: params.china_active,
         japan_active: params.japan_active,
-        other_m2_active: params.other_m2_active
+        other_m2_active: params.other_m2_active,
       };
       // 获取GLI数据
       const gliResponse = await this.getGli(apiParams);
 
-      if (!gliResponse.success || !gliResponse.data || gliResponse.data.length === 0) {
+      if (
+        !gliResponse.success ||
+        !gliResponse.data ||
+        gliResponse.data.length === 0
+      ) {
         console.warn('无法获取GLI数据来计算趋势时段的百分比变化');
         return {
           success: true,
           data: {
             centralBankTrendPeriods: this.centralBankTrendPeriods,
-            m2TrendPeriods: this.m2TrendPeriods
+            m2TrendPeriods: this.m2TrendPeriods,
           },
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         };
       }
 
       // 按时间戳从旧到新排序
-      const sortedData = [...gliResponse.data].sort((a, b) => a.timestamp - b.timestamp);
+      const sortedData = [...gliResponse.data].sort(
+        (a, b) => a.timestamp - b.timestamp,
+      );
 
       // 计算央行总负债趋势时段的百分比变化
-      const centralBankPeriodsWithChanges = this.centralBankTrendPeriods.map(period => {
-        const startDate = new Date(period.startDate);
-        const endDate = new Date(period.endDate);
-        const startTimestamp = startDate.getTime();
-        const endTimestamp = endDate.getTime();
+      const centralBankPeriodsWithChanges = this.centralBankTrendPeriods.map(
+        (period) => {
+          const startDate = new Date(period.startDate);
+          const endDate = new Date(period.endDate);
+          const startTimestamp = startDate.getTime();
+          const endTimestamp = endDate.getTime();
 
-        // 找到最接近开始日期和结束日期的数据点
-        let startPoint: GliDataPoint | undefined;
-        let endPoint: GliDataPoint | undefined;
+          // 找到最接近开始日期和结束日期的数据点
+          let startPoint: GliDataPoint | undefined;
+          let endPoint: GliDataPoint | undefined;
 
-        // 查找最接近开始日期的点（不超过开始日期）
-        for (let i = 0; i < sortedData.length; i++) {
-          if (sortedData[i].timestamp <= startTimestamp) {
-            startPoint = sortedData[i];
-          } else {
-            // 一旦超过开始日期，就停止查找
-            break;
+          // 查找最接近开始日期的点（不超过开始日期）
+          for (let i = 0; i < sortedData.length; i++) {
+            if (sortedData[i].timestamp <= startTimestamp) {
+              startPoint = sortedData[i];
+            } else {
+              // 一旦超过开始日期，就停止查找
+              break;
+            }
           }
-        }
 
-        // 查找最接近结束日期的点（不超过结束日期）
-        for (let i = 0; i < sortedData.length; i++) {
-          if (sortedData[i].timestamp <= endTimestamp) {
-            endPoint = sortedData[i];
-          } else {
-            // 一旦超过结束日期，就停止查找
-            break;
+          // 查找最接近结束日期的点（不超过结束日期）
+          for (let i = 0; i < sortedData.length; i++) {
+            if (sortedData[i].timestamp <= endTimestamp) {
+              endPoint = sortedData[i];
+            } else {
+              // 一旦超过结束日期，就停止查找
+              break;
+            }
           }
-        }
 
-        // 如果没有找到开始点，但找到了结束点，使用第一个数据点作为开始点
-        if (!startPoint && endPoint && sortedData.length > 0) {
-          startPoint = sortedData[0];
-        }
+          // 如果没有找到开始点，但找到了结束点，使用第一个数据点作为开始点
+          if (!startPoint && endPoint && sortedData.length > 0) {
+            startPoint = sortedData[0];
+          }
 
-        // 如果没有找到结束点，但找到了开始点，使用最后一个数据点作为结束点
-        if (startPoint && !endPoint && sortedData.length > 0) {
-          endPoint = sortedData[sortedData.length - 1];
-        }
+          // 如果没有找到结束点，但找到了开始点，使用最后一个数据点作为结束点
+          if (startPoint && !endPoint && sortedData.length > 0) {
+            endPoint = sortedData[sortedData.length - 1];
+          }
 
-        // 计算央行总负债的涨跌幅
-        let percentChange: number | undefined;
-        if (startPoint && endPoint && startPoint.central_bank_total && startPoint.central_bank_total > 0) {
-          percentChange = ((endPoint.central_bank_total - startPoint.central_bank_total) / startPoint.central_bank_total) * 100;
-        }
+          // 计算央行总负债的涨跌幅
+          let percentChange: number | undefined;
+          if (
+            startPoint &&
+            endPoint &&
+            startPoint.central_bank_total &&
+            startPoint.central_bank_total > 0
+          ) {
+            percentChange =
+              ((endPoint.central_bank_total - startPoint.central_bank_total) /
+                startPoint.central_bank_total) *
+              100;
+          }
 
-        return {
-          ...period,
-          percentChange
-        };
-      });
+          return {
+            ...period,
+            percentChange,
+          };
+        },
+      );
 
       // 计算M2趋势时段的百分比变化
-      const m2PeriodsWithChanges = this.m2TrendPeriods.map(period => {
+      const m2PeriodsWithChanges = this.m2TrendPeriods.map((period) => {
         const startDate = new Date(period.startDate);
         const endDate = new Date(period.endDate);
         const startTimestamp = startDate.getTime();
@@ -781,13 +1052,20 @@ export class GliService {
 
         // 计算M2总量的涨跌幅
         let percentChange: number | undefined;
-        if (startPoint && endPoint && startPoint.m2_total && startPoint.m2_total > 0) {
-          percentChange = ((endPoint.m2_total - startPoint.m2_total) / startPoint.m2_total) * 100;
+        if (
+          startPoint &&
+          endPoint &&
+          startPoint.m2_total &&
+          startPoint.m2_total > 0
+        ) {
+          percentChange =
+            ((endPoint.m2_total - startPoint.m2_total) / startPoint.m2_total) *
+            100;
         }
 
         return {
           ...period,
-          percentChange
+          percentChange,
         };
       });
 
@@ -795,9 +1073,9 @@ export class GliService {
         success: true,
         data: {
           centralBankTrendPeriods: centralBankPeriodsWithChanges,
-          m2TrendPeriods: m2PeriodsWithChanges
+          m2TrendPeriods: m2PeriodsWithChanges,
         },
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
     } catch (error) {
       console.error('计算趋势时段的百分比变化时出错:', error);
@@ -806,9 +1084,9 @@ export class GliService {
         success: true,
         data: {
           centralBankTrendPeriods: this.centralBankTrendPeriods,
-          m2TrendPeriods: this.m2TrendPeriods
+          m2TrendPeriods: this.m2TrendPeriods,
         },
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
     }
   }

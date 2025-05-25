@@ -12,14 +12,26 @@ export default () => {
       // Path for development
       join(__dirname, '..', 'config', 'environments', `${ENVIRONMENT}.json`),
       // Absolute path from project root
-      resolve(process.cwd(), 'src', 'config', 'environments', `${ENVIRONMENT}.json`),
+      resolve(
+        process.cwd(),
+        'src',
+        'config',
+        'environments',
+        `${ENVIRONMENT}.json`,
+      ),
       // Path for when running from dist
-      resolve(process.cwd(), 'dist', 'config', 'environments', `${ENVIRONMENT}.json`)
+      resolve(
+        process.cwd(),
+        'dist',
+        'config',
+        'environments',
+        `${ENVIRONMENT}.json`,
+      ),
     ];
-    
+
     let configFile;
     let usedPath;
-    
+
     // Try each path until we find one that works
     for (const path of possiblePaths) {
       try {
@@ -30,23 +42,28 @@ export default () => {
         // Continue to the next path
       }
     }
-    
+
     if (!configFile) {
-      throw new Error(`Could not find config file for environment ${ENVIRONMENT}. Tried paths: ${possiblePaths.join(', ')}`);
+      throw new Error(
+        `Could not find config file for environment ${ENVIRONMENT}. Tried paths: ${possiblePaths.join(', ')}`,
+      );
     }
-    
+
     console.log(`Loaded configuration from ${usedPath}`);
     const config = JSON.parse(configFile);
-    
+
     // Merge with environment variables if needed
     // For example, you can override database password from environment variable:
     if (process.env.DB_PASSWORD) {
       config.database.password = process.env.DB_PASSWORD;
     }
-    
+
     return config;
   } catch (error) {
-    console.error(`Error loading configuration for environment ${ENVIRONMENT}:`, error);
+    console.error(
+      `Error loading configuration for environment ${ENVIRONMENT}:`,
+      error,
+    );
     throw error;
   }
 };

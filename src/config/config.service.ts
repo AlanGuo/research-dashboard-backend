@@ -43,6 +43,8 @@ export class ConfigService {
   }
 
   getNotionDatabaseId(user: string, databaseType: string): string {
-    return this.configService.get<string>(`notion.user.${user}.${databaseType}`);
+    return this.configService.get<string>(
+      `notion.user.${user}.${databaseType}`,
+    );
   }
 }

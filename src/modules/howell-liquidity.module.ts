@@ -5,6 +5,6 @@ import { HowellLiquidityService } from '../services/howell-liquidity.service';
 @Module({
   controllers: [HowellLiquidityController],
   providers: [HowellLiquidityService],
-  exports: [HowellLiquidityService]
+  exports: [HowellLiquidityService],
 })
 export class HowellLiquidityModule {}

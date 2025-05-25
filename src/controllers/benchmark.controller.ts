@@ -1,5 +1,8 @@
 import { Controller, Get, Param } from '@nestjs/common';
-import { BenchmarkService, BenchmarkAsset } from '../services/benchmark.service';
+import {
+  BenchmarkService,
+  BenchmarkAsset,
+} from '../services/benchmark.service';
 
 @Controller('v1/benchmark')
 export class BenchmarkController {
@@ -20,7 +23,9 @@ export class BenchmarkController {
   }
 
   @Get('category/:category')
-  getBenchmarksByCategory(@Param('category') category: string): BenchmarkAsset[] {
+  getBenchmarksByCategory(
+    @Param('category') category: string,
+  ): BenchmarkAsset[] {
     return this.benchmarkService.getBenchmarksByCategory(category);
   }
 

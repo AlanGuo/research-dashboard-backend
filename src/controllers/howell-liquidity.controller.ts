@@ -4,7 +4,9 @@ import { HowellLiquidityResponse } from '../models/howell-liquidity.model';
 
 @Controller('v1/howell-liquidity')
 export class HowellLiquidityController {
-  constructor(private readonly howellLiquidityService: HowellLiquidityService) {}
+  constructor(
+    private readonly howellLiquidityService: HowellLiquidityService,
+  ) {}
 
   @Get()
   getAllLiquidityData(): HowellLiquidityResponse {

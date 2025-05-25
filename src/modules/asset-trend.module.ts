@@ -11,14 +11,14 @@ import { GliService } from 'src/services/gli.service';
 @Module({
   imports: [
     MongooseModule.forFeature([
-      { name: 'AssetTrend', schema: AssetTrendModel.schema }
+      { name: 'AssetTrend', schema: AssetTrendModel.schema },
     ]),
     TradingViewModule,
     BenchmarkModule,
-    GliModule
+    GliModule,
   ],
   controllers: [AssetTrendController],
   providers: [AssetTrendService, GliService],
-  exports: [AssetTrendService]
+  exports: [AssetTrendService],
 })
 export class AssetTrendModule {}

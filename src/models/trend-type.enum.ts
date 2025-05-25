@@ -3,5 +3,5 @@
  */
 export enum TrendType {
   CENTRAL_BANK = 'centralBank',
-  M2 = 'm2'
+  M2 = 'm2',
 }

@@ -21,13 +21,23 @@ export class NotionService {
    * @param filter Optional filter to apply to the query
    * @returns Database query results
    */
-  async getDatabaseData(user: string, databaseType: string, sortField?: string, direction?: string, filter?: any): Promise<any> {
+  async getDatabaseData(
+    user: string,
+    databaseType: string,
+    sortField?: string,
+    direction?: string,
+    filter?: any,
+  ): Promise<any> {
     try {
       // Get the database ID from config based on user and database type
-      const databaseId = this.configService.get<string>(`notion.user.${user}.${databaseType}`);
-      
+      const databaseId = this.configService.get<string>(
+        `notion.user.${user}.${databaseType}`,
+      );
+
       if (!databaseId) {
-        throw new Error(`Database ID not found for user ${user} and type ${databaseType}`);
+        throw new Error(
+          `Database ID not found for user ${user} and type ${databaseType}`,
+        );
       }
 
       // Prepare query parameters
@@ -67,24 +77,28 @@ export class NotionService {
    */
   processNotionData(notionData: any[]) {
     // Transform Notion's response format into a more usable structure
-    return notionData.map(item => {
+    return notionData.map((item) => {
       const properties = item.properties;
-      
+
       // Extract relevant properties from Notion response
       // This will need to be adjusted based on your actual Notion database structure
       const processedItem: any = {};
-      
+
       // Iterate through properties and extract values based on their type
-      Object.keys(properties).forEach(key => {
+      Object.keys(properties).forEach((key) => {
         const property = properties[key];
-        
+
         // Extract value based on property type
         switch (property.type) {
           case 'title':
-            processedItem[key] = property.title.map(t => t.plain_text).join('');
+            processedItem[key] = property.title
+              .map((t) => t.plain_text)
+              .join('');
             break;
           case 'rich_text':
-            processedItem[key] = property.rich_text.map(t => t.plain_text).join('');
+            processedItem[key] = property.rich_text
+              .map((t) => t.plain_text)
+              .join('');
             break;
           case 'number':
             processedItem[key] = property.number;
@@ -93,7 +107,7 @@ export class NotionService {
             processedItem[key] = property.select?.name;
             break;
           case 'multi_select':
-            processedItem[key] = property.multi_select.map(s => s.name);
+            processedItem[key] = property.multi_select.map((s) => s.name);
             break;
           case 'date':
             processedItem[key] = property.date?.start;
@@ -105,7 +119,7 @@ export class NotionService {
             processedItem[key] = null;
         }
       });
-      
+
       return processedItem;
     });
   }

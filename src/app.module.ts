@@ -18,16 +18,16 @@ import { MongooseModule } from '@nestjs/mongoose';
       useFactory: (configService: ConfigService) => ({
         uri: configService.get<string>('database.connection_url'),
         dbName: configService.get<string>('database.db_name'),
-        autoCreate: true
+        autoCreate: true,
       }),
       inject: [ConfigService],
     }),
     NotionModule,
-    GliModule, 
-    TradingViewModule, 
-    BenchmarkModule, 
+    GliModule,
+    TradingViewModule,
+    BenchmarkModule,
     AssetTrendModule,
-    HowellLiquidityModule
+    HowellLiquidityModule,
   ],
   controllers: [AppController],
   providers: [AppService],

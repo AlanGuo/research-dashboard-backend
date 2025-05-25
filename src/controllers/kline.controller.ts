@@ -18,7 +18,7 @@ export class KlineController {
     @Param('symbol') symbol: string,
     @Query('interval') interval: string = '1D',
     @Query('bars') bars: string = '100',
-    @Query('from') from?: string
+    @Query('from') from?: string,
   ) {
     try {
       // Get K-line data - TradingViewService will format the symbol internally
@@ -26,9 +26,9 @@ export class KlineController {
         symbol,
         interval,
         parseInt(bars, 10),
-        from ? parseInt(from, 10) : undefined
+        from ? parseInt(from, 10) : undefined,
       );
-      
+
       return {
         success: true,
         data,
@@ -43,7 +43,7 @@ export class KlineController {
       };
     }
   }
-  
+
   /**
    * Get price data for a specific symbol on exact dates
    * @param symbol Trading symbol (e.g., 'BINANCE:BTCUSDT')
@@ -53,11 +53,11 @@ export class KlineController {
   @Get(':symbol/exact-dates')
   async getExactDatePrices(
     @Param('symbol') symbol: string,
-    @Query('dates') dates: string[]
+    @Query('dates') dates: string[],
   ) {
     try {
       // console.log(`Received exact-dates request for symbol: ${symbol}, dates:`, dates);
-      
+
       if (!dates || !Array.isArray(dates) || dates.length === 0) {
         return {
           success: false,
@@ -65,19 +65,21 @@ export class KlineController {
           timestamp: new Date().toISOString(),
         };
       }
-      
+
       // 格式化日期，确保格式一致
-      const formattedDates = dates.map(date => {
-        // 尝试解析日期
-        const parsedDate = new Date(date);
-        // 检查是否是有效日期
-        if (isNaN(parsedDate.getTime())) {
-          console.error(`Invalid date format: ${date}`);
-          return null;
-        }
-        return parsedDate.toISOString().split('T')[0]; // 标准化为 YYYY-MM-DD 格式
-      }).filter(date => date !== null);
-      
+      const formattedDates = dates
+        .map((date) => {
+          // 尝试解析日期
+          const parsedDate = new Date(date);
+          // 检查是否是有效日期
+          if (isNaN(parsedDate.getTime())) {
+            console.error(`Invalid date format: ${date}`);
+            return null;
+          }
+          return parsedDate.toISOString().split('T')[0]; // 标准化为 YYYY-MM-DD 格式
+        })
+        .filter((date) => date !== null);
+
       // 如果所有日期都无效，返回错误
       if (formattedDates.length === 0) {
         return {
@@ -86,56 +88,62 @@ export class KlineController {
           timestamp: new Date().toISOString(),
         };
       }
-      
+
       // 按时间顺序排序日期
       const sortedDates = [...formattedDates].sort((a, b) => {
         return new Date(a).getTime() - new Date(b).getTime();
       });
-      
+
       // 获取最晚日期作为起始点
       const latestDate = new Date(sortedDates[sortedDates.length - 1]);
       // 往后推一天
       latestDate.setDate(latestDate.getDate() + 1);
       const fromTimestamp = Math.floor(latestDate.getTime() / 1000);
-      
+
       // 计算需要获取的天数（从最早到最晚日期 + 缓冲）
       const earliestDate = new Date(sortedDates[0]);
-      const daysDiff = Math.ceil((latestDate.getTime() - earliestDate.getTime()) / (1000 * 60 * 60 * 24));
+      const daysDiff = Math.ceil(
+        (latestDate.getTime() - earliestDate.getTime()) / (1000 * 60 * 60 * 24),
+      );
 
       // 一次性获取整个日期范围的数据
       // daysDiff 最大为 maxBatch 天, 如果超过 maxBatch 天，则分批获取
       const maxBatch = 1000;
       let data: any = null;
-      
+
       if (daysDiff > maxBatch) {
         // 分批获取数据
         const batches = Math.ceil(daysDiff / maxBatch);
-        console.log(`Data range too large (${daysDiff} days), fetching in ${batches} batches of ${maxBatch} days each`);
-        
+        console.log(
+          `Data range too large (${daysDiff} days), fetching in ${batches} batches of ${maxBatch} days each`,
+        );
+
         let allCandles = [];
         let currentFromTimestamp = fromTimestamp;
-        
+
         // 逐批获取数据
         for (let i = 0; i < batches; i++) {
           // 计算当前批次应获取的天数
-          const currentBatchDays = (i === batches - 1) 
-            ? (daysDiff - (maxBatch * (batches - 1))) // 最后一批可能不足 maxBatch 天
-            : maxBatch;
-          
+          const currentBatchDays =
+            i === batches - 1
+              ? daysDiff - maxBatch * (batches - 1) // 最后一批可能不足 maxBatch 天
+              : maxBatch;
+
           // 获取当前批次的数据
           const batchData = await this.tradingViewService.getKlineData(
             symbol,
-            '1D',  // 始终使用日线数据
+            '1D', // 始终使用日线数据
             currentBatchDays,
-            currentFromTimestamp
+            currentFromTimestamp,
           );
-          
+
           if (batchData && batchData.candles && batchData.candles.length > 0) {
             allCandles = [...allCandles, ...batchData.candles];
-            
+
             // 更新下一批次的起始时间戳
             // 找到当前批次中最早的日期
-            const earliestCandleInBatch = batchData.candles[batchData.candles.length - 1];
+            const earliestCandleInBatch =
+              batchData.candles[batchData.candles.length - 1];
             if (earliestCandleInBatch && earliestCandleInBatch.datetime) {
               const earliestDate = new Date(earliestCandleInBatch.datetime);
               // 往前推一天作为下一批次的结束时间
@@ -143,46 +151,50 @@ export class KlineController {
               currentFromTimestamp = Math.floor(earliestDate.getTime() / 1000);
             }
           } else {
-            console.log(`No data received for batch ${i+1}`);
+            console.log(`No data received for batch ${i + 1}`);
             break; // 如果某一批次没有数据，则停止获取
           }
         }
-        
+
         data = {
-          candles: allCandles
+          candles: allCandles,
         };
       } else {
         // 一次性获取所有数据
         data = await this.tradingViewService.getKlineData(
           symbol,
-          '1D',  // 始终使用日线数据
-          daysDiff,  // 添加额外缓冲以确保获取所有需要的日期
-          fromTimestamp
+          '1D', // 始终使用日线数据
+          daysDiff, // 添加额外缓冲以确保获取所有需要的日期
+          fromTimestamp,
         );
       }
       // 从获取的数据中提取仅请求的日期
       if (data && data.candles && data.candles.length > 0) {
         // 创建包含请求的确切日期的结果数组
         const candles = data.candles;
-        const result = formattedDates.map(date => {
-          const candle = candles.find(c => c.datetime.split('T')[0] === date);
+        const result = formattedDates.map((date) => {
+          const candle = candles.find((c) => c.datetime.split('T')[0] === date);
           // 如果没有则循环向前推，直到找到价格
           if (candle === undefined) {
             for (let i = 1; i <= 30; i++) {
               const prevDate = new Date(date);
               prevDate.setDate(prevDate.getDate() - i);
-              const prevCandle = candles.find(c => c.datetime.split('T')[0] === prevDate.toISOString().split('T')[0]);
+              const prevCandle = candles.find(
+                (c) =>
+                  c.datetime.split('T')[0] ===
+                  prevDate.toISOString().split('T')[0],
+              );
               if (prevCandle !== undefined) {
                 return {
                   date: date,
-                  price: prevCandle.close
+                  price: prevCandle.close,
                 };
               }
             }
           }
           return {
             date: date,
-            price: candle !== undefined ? candle.close : null
+            price: candle !== undefined ? candle.close : null,
           };
         });
         return {

@@ -38,7 +38,7 @@ export function calculateROC(data: number[], period: number): number[] {
   for (let i = period; i < data.length; i++) {
     const currentValue = data[i];
     const previousValue = data[i - period];
-    
+
     if (previousValue !== 0 && previousValue !== undefined) {
       result[i] = ((currentValue - previousValue) / previousValue) * 100;
     } else {

@@ -13,7 +13,7 @@ export class GliController {
   async getGli(@Query() queryParams) {
     // 手动转换参数类型
     const params = plainToInstance(GliParamsDto, queryParams);
-    
+
     // 验证参数
     const errors = await validate(params);
     if (errors.length > 0) {
@@ -21,18 +21,18 @@ export class GliController {
         success: false,
         error: 'Invalid parameters',
         errors,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
     }
-    
+
     return this.gliService.getGli(params);
   }
-  
+
   @Get('trend-periods')
   async getTrendPeriods(@Query() queryParams): Promise<GliTrendResponse> {
     // 手动转换参数类型
     const params = plainToInstance(GliParamsDto, queryParams);
-    
+
     // 验证参数
     const errors = await validate(params);
     if (errors.length > 0) {
@@ -43,11 +43,11 @@ export class GliController {
         timestamp: new Date().toISOString(),
         data: {
           centralBankTrendPeriods: [],
-          m2TrendPeriods: []
-        }
+          m2TrendPeriods: [],
+        },
       };
     }
-    
+
     return await this.gliService.getTrendPeriods(params);
   }
 }

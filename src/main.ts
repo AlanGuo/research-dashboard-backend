@@ -7,8 +7,15 @@ import configuration from './config/configuration';
 async function bootstrap() {
   // 直接从配置文件加载日志级别
   const config = configuration();
-  const loggingLevel = config.logging?.level || ['log', 'error', 'warn', 'fatal', 'debug', 'verbose'];
-  
+  const loggingLevel = config.logging?.level || [
+    'log',
+    'error',
+    'warn',
+    'fatal',
+    'debug',
+    'verbose',
+  ];
+
   const app = await NestFactory.create(AppModule, {
     logger: loggingLevel as LogLevel[],
   });
@@ -19,10 +26,12 @@ async function bootstrap() {
       origin: configService.corsOrigin,
     });
   }
-  
+
   // Get port from config
   const port = configService.appPort || 3000;
   await app.listen(port);
-  console.log(`Application is running on port ${port} in ${configService.environment} mode`);
+  console.log(
+    `Application is running on port ${port} in ${configService.environment} mode`,
+  );
 }
 bootstrap();
