@@ -22,11 +22,12 @@ export class HowellLiquidityService {
     { date: '2025-02', globalLiquidity: 173.50, shadowMonetaryBase: 105.00, collateralMultiplier: 1.65, isRevised: true },
     { date: '2025-03', globalLiquidity: 175.53, shadowMonetaryBase: 106.05, collateralMultiplier: 1.66, isRevised: true },
     { date: '2025-04', globalLiquidity: 179.14, shadowMonetaryBase: 108.57, collateralMultiplier: 1.65, isRevised: true },
-    
+
     // 日度数据（可能修正）
     { date: '2025-04-28', rawDate: '2025-04-25', globalLiquidity: 179.14, shadowMonetaryBase: 108.57, collateralMultiplier: 1.64, isRevised: false },
     { date: '2025-05-05', rawDate: '2025-05-02', globalLiquidity: 178.62, shadowMonetaryBase: 108.31, collateralMultiplier: 1.65, isRevised: false },
-    { date: '2025-05-12', rawDate: '2025-05-09', globalLiquidity: 177.91, shadowMonetaryBase: 107.75, collateralMultiplier: 1.65, isRevised: false },
+    { date: '2025-05-12', rawDate: '2025-05-09', globalLiquidity: 178.07, shadowMonetaryBase: 107.91, collateralMultiplier: 1.65, isRevised: false },
+    { date: '2025-05-19', rawDate: '2025-05-16', globalLiquidity: 177.22, shadowMonetaryBase: 107.14, collateralMultiplier: 1.65, isRevised: false },
   ];
 
   /**
@@ -102,7 +103,7 @@ export class HowellLiquidityService {
       });
 
       const latestData = sortedData.slice(0, count);
-      
+
       return {
         success: true,
         data: latestData,
