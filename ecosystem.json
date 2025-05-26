@@ -1,14 +1,14 @@
 {
   "apps" : [
     {
-      "name"      : "resarch-dashboard-backend",
+      "name"      : "research-dashboard-backend",
       "script"    : "dist/main.js",
-      "args"      : "",   
+      "args"      : "",
       "instances" : 1,
       "exec_mode" : "fork",
       "watch"     : false,
-      "error_file": "logs/resarch-dashboard-backend.stderr.log",
-      "out_file"  : "logs/resarch-dashboard-backend.log",
+      "error_file": "logs/research-dashboard-backend.stderr.log",
+      "out_file"  : "logs/research-dashboard-backend.log",
       "mergeLogs" : false,
       "env": {
         "NODE_ENV": "production"
