@@ -56,6 +56,48 @@ export class BtcDomService {
    * @param notionData Raw data from Notion API
    * @returns Processed data
    */
+  /**
+   * Calculate total P&L for a trade record
+   * @param record The trade record
+   * @returns The calculated total P&L
+   */
+  private calculateTotalPnl(record: any): number | null {
+    try {
+      // Get required values
+      const btcCurrentPrice = parseFloat(record['BTC现价']);
+      const btcEntryPrice = parseFloat(record['BTC初始价格']);
+      const btcPosition = parseFloat(record['BTC仓位']);
+      const altCurrentBalance = parseFloat(record['ALT当前余额(U)']);
+      const altInitialBalance = parseFloat(record['ALT初始余额(U)']);
+
+      // Validate required values
+      if (
+        isNaN(btcCurrentPrice) ||
+        isNaN(btcEntryPrice) ||
+        isNaN(btcPosition) ||
+        isNaN(altCurrentBalance) ||
+        isNaN(altInitialBalance)
+      ) {
+        return null;
+      }
+
+      // Calculate BTC P&L: (current_price - entry_price) * position
+      const btcPnl = (btcCurrentPrice - btcEntryPrice) * btcPosition;
+
+      // Calculate ALT P&L: current_balance - initial_balance
+      const altPnl = altCurrentBalance - altInitialBalance;
+
+      // Total P&L is sum of BTC and ALT P&L
+      const totalPnl = btcPnl + altPnl;
+
+      // Round to 2 decimal places
+      return Math.round(totalPnl * 100) / 100;
+    } catch (error) {
+      console.error('Error calculating total P&L:', error);
+      return null;
+    }
+  }
+
   private processNotionData(notionData: any[]) {
     // Transform Notion's response format into a more usable structure
     return notionData.map((item) => {
@@ -96,6 +138,9 @@ export class BtcDomService {
             processedItem[key] = null;
         }
       });
+
+      // Calculate and add total P&L
+      processedItem['总盈亏'] = this.calculateTotalPnl(processedItem);
 
       return processedItem;
     });

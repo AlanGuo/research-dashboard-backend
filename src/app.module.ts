@@ -8,6 +8,7 @@ import { TradingViewModule } from './modules/tradingview.module';
 import { BenchmarkModule } from './modules/benchmark.module';
 import { AssetTrendModule } from './modules/asset-trend.module';
 import { HowellLiquidityModule } from './modules/howell-liquidity.module';
+import { BtcDomModule } from './modules/btcdom.module';
 import { MongooseModule } from '@nestjs/mongoose';
 
 @Module({
@@ -28,6 +29,7 @@ import { MongooseModule } from '@nestjs/mongoose';
     BenchmarkModule,
     AssetTrendModule,
     HowellLiquidityModule,
+    BtcDomModule,
   ],
   controllers: [AppController],
   providers: [AppService],
