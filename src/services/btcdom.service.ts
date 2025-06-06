@@ -58,6 +58,7 @@ export class BtcDomService {
    */
   /**
    * Calculate total P&L for a trade record
+   * Includes BTC P&L, ALT balance change, and ALT floating P&L
    * @param record The trade record
    * @returns The calculated total P&L
    */
@@ -69,6 +70,7 @@ export class BtcDomService {
       const btcPosition = parseFloat(record['BTC仓位']);
       const altCurrentBalance = parseFloat(record['ALT当前余额(U)']);
       const altInitialBalance = parseFloat(record['ALT初始余额(U)']);
+      const altFloatingPnl = parseFloat(record['ALT浮动盈亏']);
 
       // Validate required values
       if (
@@ -87,8 +89,11 @@ export class BtcDomService {
       // Calculate ALT P&L: current_balance - initial_balance
       const altPnl = altCurrentBalance - altInitialBalance;
 
-      // Total P&L is sum of BTC and ALT P&L
-      const totalPnl = btcPnl + altPnl;
+      // Add ALT floating P&L if available
+      const altFloatingPnlValue = !isNaN(altFloatingPnl) ? altFloatingPnl : 0;
+
+      // Total P&L is sum of BTC P&L, ALT P&L, and ALT floating P&L
+      const totalPnl = btcPnl + altPnl + altFloatingPnlValue;
 
       // Round to 2 decimal places
       return Math.round(totalPnl * 100) / 100;
@@ -133,6 +138,17 @@ export class BtcDomService {
             break;
           case 'checkbox':
             processedItem[key] = property.checkbox;
+            break;
+          case 'status':
+            processedItem[key] = property.status?.name;
+            break;
+          case 'formula':
+            // Handle formula fields (like 总盈亏)
+            if (property.formula?.type === 'number') {
+              processedItem[key] = property.formula.number;
+            } else {
+              processedItem[key] = null;
+            }
             break;
           default:
             processedItem[key] = null;
