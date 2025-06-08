@@ -122,7 +122,7 @@ export class HowellLiquidityService {
       isRevised: true,
     },
 
-    // 日度数据（可能修正）
+    // 周度数据（可能修正）
     {
       date: '2025-04-28',
       rawDate: '2025-04-25',
@@ -158,9 +158,17 @@ export class HowellLiquidityService {
     {
       date: '2025-05-26',
       rawDate: '2025-05-23',
-      globalLiquidity: 176.39,
-      shadowMonetaryBase: 107.19,
-      collateralMultiplier: 1.65,
+      globalLiquidity: 176.81,
+      shadowMonetaryBase: 107.64,
+      collateralMultiplier: 1.64,
+      isRevised: false,
+    },
+    {
+      date: '2025-06-02',
+      rawDate: '2025-05-30',
+      globalLiquidity: 176.41,
+      shadowMonetaryBase: 107.80,
+      collateralMultiplier: 1.64,
       isRevised: false,
     },
   ];
