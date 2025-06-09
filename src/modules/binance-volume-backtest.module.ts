@@ -1,0 +1,17 @@
+import { Module } from '@nestjs/common';
+import { MongooseModule } from '@nestjs/mongoose';
+import { BinanceVolumeBacktestService } from '../services/binance-volume-backtest.service';
+import { BinanceVolumeBacktestController } from '../controllers/binance-volume-backtest.controller';
+import { VolumeBacktest, VolumeBacktestSchema } from '../models/volume-backtest.model';
+
+@Module({
+  imports: [
+    MongooseModule.forFeature([
+      { name: VolumeBacktest.name, schema: VolumeBacktestSchema },
+    ]),
+  ],
+  controllers: [BinanceVolumeBacktestController],
+  providers: [BinanceVolumeBacktestService],
+  exports: [BinanceVolumeBacktestService],
+})
+export class BinanceVolumeBacktestModule {}
