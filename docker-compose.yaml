@@ -16,7 +16,7 @@ services:
     container_name: rd-mongo
     restart: always
     volumes:
-    - ./app/mongo:/var/lib/mongodb
+    - ./docker-data/mongo:/var/lib/mongodb
     expose:
       - 27017
     ports:

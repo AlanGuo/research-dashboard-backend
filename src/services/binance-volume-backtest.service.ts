@@ -406,4 +406,29 @@ export class BinanceVolumeBacktestService {
   private delay(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
+
+  /**
+   * 测试Binance API连通性
+   */
+  async testBinanceApi() {
+    try {
+      this.logger.log('开始测试Binance API连通性...');
+      
+      // 检查服务器时间
+      const timeResponse = await axios.get(`${this.binanceApiUrl}/api/v3/time`, {
+        timeout: 5000,
+      });
+      const serverTime = timeResponse.data.serverTime;
+      this.logger.log(`Binance服务器时间: ${new Date(serverTime).toISOString()}`);
+      
+      return {
+        success: true,
+        serverTime: new Date(serverTime).toISOString(),
+        message: 'Binance API连接正常'
+      };
+    } catch (error) {
+      this.logger.error('Binance API连通性测试失败:', error);
+      throw error;
+    }
+  }
 }

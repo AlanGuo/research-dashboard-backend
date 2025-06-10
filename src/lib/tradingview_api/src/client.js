@@ -1,11 +1,8 @@
 const { HttpsProxyAgent } = require("https-proxy-agent");
 const WebSocket = require('ws');
 
-// HTTP/HTTPS proxy to connect to
-var proxy = process.env.http_proxy;
-if (proxy) {
-  console.log('using proxy server %j', proxy);
-}
+// ws/wss proxy to connect to
+var proxy = process.env.WSS_PROXY || process.env.WS_PROXY || null;
 const misc = require('./miscRequests');
 const protocol = require('./protocol');
 
@@ -234,12 +231,22 @@ module.exports = class Client {
     const server = clientOptions.server || 'data';
     let agent
     if (proxy) {
+      // 使用代理服务器
+      console.log('[TradingView client] Using proxy server:', proxy);
       agent = new HttpsProxyAgent(proxy);
     }
-    this.#ws = new WebSocket(`wss://${server}.tradingview.com/socket.io/websocket?&type=chart`, {
+    
+    // WebSocket连接配置
+    const wsOptions = {
       origin: 'https://s.tradingview.com',
-      agent: agent
-    });
+      rejectUnauthorized: agent ? false : true, // 如果使用代理，可能需要禁用证书验证
+      agent,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+      }
+    };
+    
+    this.#ws = new WebSocket(`wss://${server}.tradingview.com/socket.io/websocket?&type=chart`, wsOptions);
 
     if (clientOptions.token) {
       misc.getUser(

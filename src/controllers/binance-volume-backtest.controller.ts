@@ -120,6 +120,37 @@ export class BinanceVolumeBacktestController {
   }
 
   /**
+   * 测试币安API连通性
+   * GET /api/binance/volume-backtest/test-connection
+   */
+  @Get('test-connection')
+  async testBinanceConnection() {
+    try {
+      this.logger.log('测试Binance API连通性...');
+      
+      const result = await this.volumeBacktestService.testBinanceApi();
+      
+      return {
+        success: true,
+        message: 'Binance API连通测试成功',
+        data: result,
+        timestamp: new Date().toISOString(),
+      };
+    } catch (error) {
+      this.logger.error('Binance API连通测试失败:', error);
+      throw new HttpException(
+        {
+          success: false,
+          message: 'Binance API连通测试失败',
+          error: error.message || '未知错误',
+          timestamp: new Date().toISOString(),
+        },
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+  }
+
+  /**
    * 获取支持的交易对列表
    * GET /api/binance/volume-backtest/symbols
    */
