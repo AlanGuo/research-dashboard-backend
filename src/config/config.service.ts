@@ -50,6 +50,10 @@ export class ConfigService {
     return this.configService.get<number>('binance.request_delay');
   }
 
+  get binanceFuturesApiUrl(): string {
+    return this.configService.get<string>('binance.futures_api_url');
+  }
+
   getNotionDatabaseId(user: string, databaseType: string): string {
     return this.configService.get<string>(
       `notion.user.${user}.${databaseType}`,

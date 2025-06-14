@@ -33,6 +33,28 @@ export class VolumeBacktestParamsDto {
   @IsOptional()
   @Transform(({ value }) => value === 'true')
   includeInactive?: boolean = false; // 是否包含非活跃交易对
+
+  @IsOptional()
+  @IsNumber()
+  @Min(30)
+  @Max(730)
+  @Transform(({ value }) => parseInt(value))
+  minHistoryDays?: number = 365; // 最少历史数据天数，默认365天（1年）
+
+  @IsOptional()
+  @Transform(({ value }) => value === 'true')
+  requireFutures?: boolean = false; // 是否要求有期货合约可做空
+
+  @IsOptional()
+  @Transform(({ value }) => value === 'true')
+  excludeStablecoins?: boolean = true; // 是否排除稳定币，默认排除
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(24)
+  @Transform(({ value }) => parseInt(value))
+  granularityHours?: number = 8; // 回测粒度（小时），默认8小时
 }
 
 export class VolumeBacktestQueryDto {
@@ -79,6 +101,19 @@ export interface VolumeBacktestResponse {
     totalHours: number;
     dataPoints: number;
     processingTime: number;
+    symbolStats?: {
+      totalDiscovered: number;
+      validSymbols: number;
+      invalidSymbols: number;
+      validRate: string;
+      sampleInvalidSymbols: string[];
+      filterCriteria: {
+        minHistoryDays: number;
+        requireFutures: boolean;
+        excludeStablecoins: boolean;
+      };
+      invalidReasons?: { [reason: string]: number };
+    };
   };
 }
 

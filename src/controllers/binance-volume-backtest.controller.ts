@@ -179,4 +179,23 @@ export class BinanceVolumeBacktestController {
       throw new HttpException('获取交易对列表失败', HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
+
+  /**
+   * 测试期货API连通性
+   * GET /v1/binance/volume-backtest/test-futures-api
+   */
+  @Get('test-futures-api')
+  async testFuturesApi() {
+    try {
+      this.logger.log('测试期货API连通性请求');
+      const result = await this.volumeBacktestService.testFuturesApi();
+      return result;
+    } catch (error) {
+      this.logger.error('期货API测试失败:', error);
+      throw new HttpException(
+        error.message || '期货API测试失败',
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
 }

@@ -1,5 +1,11 @@
 # 币安成交量排行榜回测功能
 
+## 服务地址
+
+- **Base URL**: `http://localhost:4001`
+- **API 前缀**: `/v1`
+- **完整地址示例**: `http://localhost:4001/v1/binance/volume-backtest`
+
 ## 功能说明
 
 这个功能实现了币安交易所每小时成交量排行榜的历史回测，支持以下特性：
@@ -16,7 +22,7 @@
 ### 1. 执行回测
 
 ```bash
-POST /api/binance/volume-backtest
+POST /v1/binance/volume-backtest
 ```
 
 **请求参数：**
@@ -31,24 +37,43 @@ POST /api/binance/volume-backtest
 }
 ```
 
+**参数说明：**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `startTime` | string | ✅ | 回测开始时间，ISO 8601格式（UTC时区）<br/>例：`2024-12-01T00:00:00.000Z` |
+| `endTime` | string | ✅ | 回测结束时间，ISO 8601格式（UTC时区）<br/>例：`2024-12-02T00:00:00.000Z` |
+| `limit` | number | ❌ | 每小时排行榜返回的交易对数量<br/>默认值：50，最大值：200 |
+| `minVolumeThreshold` | number | ❌ | 最小成交金额过滤阈值（USDT）<br/>默认值：10000，过滤掉成交量过小的交易对 |
+| `quoteAsset` | string | ❌ | 计价货币筛选，只统计特定计价货币的交易对<br/>例：`"USDT"`、`"BTC"`、`"ETH"` |
+| `symbols` | string[] | ❌ | 指定交易对列表，只回测这些交易对<br/>例：`["BTCUSDT", "ETHUSDT", "BNBUSDT"]` |
+
+**参数详解：**
+
+- **时间范围**：`startTime` 到 `endTime` 之间的每个小时都会生成一个排行榜
+- **排行数量**：`limit` 控制每个小时返回前N名交易对
+- **成交量过滤**：`minVolumeThreshold` 过滤掉24小时成交金额低于此值的交易对
+- **货币筛选**：`quoteAsset` 只统计以特定货币计价的交易对（如只看USDT交易对）
+- **指定交易对**：`symbols` 可以只回测特定的交易对，不指定则回测所有符合条件的交易对
+
 ### 2. 查询历史数据
 
 ```bash
-GET /api/binance/volume-backtest?date=2024-12-01&hour=12&limit=20
+GET /v1/binance/volume-backtest?date=2024-12-01&hour=12&limit=20
 ```
 
 ### 3. 获取支持的交易对
 
 ```bash
-GET /api/binance/volume-backtest/symbols?quoteAsset=USDT
+GET /v1/binance/volume-backtest/symbols?quoteAsset=USDT
 ```
 
 ## 使用示例
 
-### 1. 回测最近24小时的数据
+### 1. 回测最近24小时的数据（所有USDT交易对）
 
 ```bash
-curl -X POST http://localhost:3000/api/binance/volume-backtest \
+curl -X POST http://localhost:4001/v1/binance/volume-backtest \
   -H "Content-Type: application/json" \
   -d '{
     "startTime": "2024-12-08T00:00:00.000Z",
@@ -59,16 +84,42 @@ curl -X POST http://localhost:3000/api/binance/volume-backtest \
   }'
 ```
 
-### 2. 查询特定时间点的排行榜
+### 2. 回测指定交易对的排名变化
 
 ```bash
-curl "http://localhost:3000/api/binance/volume-backtest?date=2024-12-08&hour=15&limit=10"
+curl -X POST http://localhost:4001/v1/binance/volume-backtest \
+  -H "Content-Type: application/json" \
+  -d '{
+    "startTime": "2024-12-08T00:00:00.000Z",
+    "endTime": "2024-12-08T12:00:00.000Z",
+    "symbols": ["BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT", "SOLUSDT"],
+    "limit": 10
+  }'
 ```
 
-### 3. 查询某个交易对的历史排名
+### 3. 回测所有交易对（包含BTC、ETH计价）
 
 ```bash
-curl "http://localhost:3000/api/binance/volume-backtest?symbol=BTCUSDT&date=2024-12-08"
+curl -X POST http://localhost:4001/v1/binance/volume-backtest \
+  -H "Content-Type: application/json" \
+  -d '{
+    "startTime": "2024-12-08T12:00:00.000Z",
+    "endTime": "2024-12-08T18:00:00.000Z",
+    "limit": 100,
+    "minVolumeThreshold": 10000
+  }'
+```
+
+### 4. 查询特定时间点的排行榜
+
+```bash
+curl "http://localhost:4001/v1/binance/volume-backtest?date=2024-12-08&hour=15&limit=10"
+```
+
+### 5. 查询某个交易对的历史排名
+
+```bash
+curl "http://localhost:4001/v1/binance/volume-backtest?symbol=BTCUSDT&date=2024-12-08"
 ```
 
 ## 响应格式
@@ -176,6 +227,29 @@ validPairs.forEach((pair, index) => {
 3. **数据质量**：部分历史数据可能缺失，需要容错处理
 4. **内存使用**：大量数据处理时注意内存管理
 5. **时区问题**：所有时间使用UTC，避免时区混乱
+6. **数据预生成**：查询历史数据前需要先执行POST接口生成回测数据
+
+## 数据生成流程
+
+要查询特定时间点的数据，需要按以下步骤操作：
+
+1. **执行回测生成数据**：
+```bash
+curl -X POST http://localhost:4001/v1/binance/volume-backtest \
+  -H "Content-Type: application/json" \
+  -d '{
+    "startTime": "2024-12-08T15:00:00.000Z",
+    "endTime": "2024-12-08T16:00:00.000Z",
+    "limit": 50,
+    "minVolumeThreshold": 10000,
+    "quoteAsset": "USDT"
+  }'
+```
+
+2. **查询生成的数据**：
+```bash
+curl "http://localhost:4001/v1/binance/volume-backtest?date=2024-12-08&hour=15&limit=10"
+```
 
 ## 扩展功能
 
