@@ -1,7 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+import { createHash } from 'crypto';
 import { VolumeBacktest, VolumeBacktestDocument, HourlyVolumeRankingItem } from '../models/volume-backtest.model';
+import { SymbolFilterCache, SymbolFilterCacheDocument } from '../models/symbol-filter-cache.model';
 import { VolumeBacktestParamsDto, VolumeBacktestResponse } from '../dto/volume-backtest-params.dto';
 import { ConfigService } from '../config/config.service';
 import { BinanceService } from './binance.service';
@@ -41,6 +43,8 @@ export class BinanceVolumeBacktestService {
   constructor(
     @InjectModel(VolumeBacktest.name)
     private volumeBacktestModel: Model<VolumeBacktestDocument>,
+    @InjectModel(SymbolFilterCache.name)
+    private symbolFilterCacheModel: Model<SymbolFilterCacheDocument>,
     private readonly configService: ConfigService,
     private readonly binanceService: BinanceService,
   ) {}
@@ -60,14 +64,38 @@ export class BinanceVolumeBacktestService {
       const allActiveSymbols = await this.getActiveSymbols(params);
       this.logger.log(`🔍 获取到 ${allActiveSymbols.length} 个活跃交易对`);
       
-      // 2. 筛选有足够历史数据的交易对
-      const symbolFilter = await this.filterValidSymbols(
-        allActiveSymbols, 
-        startTime, 
-        params.minHistoryDays || 365,
-        params.requireFutures || false,
-        params.excludeStablecoins ?? true  // 默认排除稳定币
-      );
+      // 2. 生成筛选条件哈希并尝试从缓存获取
+      const filterHash = this.generateFilterHash(startTime, params);
+      this.logger.log(`🔑 筛选条件哈希: ${filterHash.slice(0, 16)}...`);
+      
+      let symbolFilter = await this.getFilterFromCache(filterHash);
+      
+      if (!symbolFilter) {
+        // 缓存未命中，执行实际筛选
+        this.logger.log(`💾 缓存未命中，开始执行交易对筛选...`);
+        const filterStartTime = Date.now();
+        
+        symbolFilter = await this.filterValidSymbols(
+          allActiveSymbols, 
+          startTime, 
+          params.minHistoryDays || 365,
+          params.requireFutures || false,
+          params.excludeStablecoins ?? true  // 默认排除稳定币
+        );
+        
+        const filterProcessingTime = Date.now() - filterStartTime;
+        
+        // 保存到缓存
+        await this.saveFilterToCache(
+          filterHash,
+          startTime,
+          params,
+          symbolFilter,
+          allActiveSymbols,
+          filterProcessingTime
+        );
+      }
+      
       const activeSymbols = symbolFilter.valid;
       
       this.logger.log(`✅ 筛选完成: ${activeSymbols.length}/${allActiveSymbols.length} 个交易对符合所有条件`);
@@ -729,8 +757,9 @@ export class BinanceVolumeBacktestService {
     this.logDataStatistics(volumeWindows, '预加载完成后');
     
     const stats = this.calculateDataSuccessRate(volumeWindows);
-    if (stats.successRate < 90) {
-      this.logger.warn(`⚠️ 数据获取成功率较低 (${stats.successRate.toFixed(1)}%)，可能影响回测准确性`);
+    const successRateNum = parseFloat(stats.successRate.replace('%', ''));
+    if (successRateNum < 90) {
+      this.logger.warn(`⚠️ 数据获取成功率较低 (${stats.successRate})，可能影响回测准确性`);
     }
   }
 
@@ -746,12 +775,12 @@ export class BinanceVolumeBacktestService {
     
     const stats = this.calculateDataSuccessRate(volumeWindows);
     
-    if (stats.failed === 0) {
+    if (stats.failedSymbols.length === 0) {
       this.logger.log('✅ 所有交易对数据完整');
       return;
     }
     
-    this.logger.warn(`🚨 发现 ${stats.failed} 个交易对数据不完整，开始最终修复...`);
+    this.logger.warn(`🚨 发现 ${stats.failedSymbols.length} 个交易对数据不完整，开始最终修复...`);
     
     // 对于数据不完整的交易对，尝试最后一次修复
     const repairPromises = stats.failedSymbols.map(async (symbol) => {
@@ -931,100 +960,197 @@ export class BinanceVolumeBacktestService {
   }
 
   /**
-   * 检查单个交易对的历史数据是否充足
+   * 生成筛选条件的哈希值
    */
-  private async checkSymbolHistoryData(
-    symbol: string,
-    historyStart: Date,
-    historyEnd: Date
-  ): Promise<boolean> {
-    try {
-      // 获取一小段历史数据来验证
-      const testKlines = await this.binanceService.getKlines({
-        symbol,
-        interval: '1d', // 使用日线数据检查，更高效
-        startTime: historyStart.getTime(),
-        endTime: historyEnd.getTime(),
-        limit: 10, // 只需要少量数据验证
-      });
-      
-      // 检查是否有足够的历史数据
-      if (!testKlines || testKlines.length === 0) {
-        return false;
-      }
-      
-      // 检查最早的数据是否足够早
-      const earliestTime = testKlines[0].openTime;
-      const requiredTime = historyStart.getTime();
-      
-      // 如果最早数据距离要求时间不超过30天，认为是有效的
-      const timeDifference = Math.abs(earliestTime - requiredTime);
-      const daysDifference = timeDifference / (24 * 60 * 60 * 1000);
-      
-      return daysDifference <= 30; // 允许30天的误差
-      
-    } catch (error) {
-      // 如果API调用失败，可能是交易对不存在或已下架
-      if (error.response?.status === 400 && error.response?.data?.code === -1121) {
-        // 无效交易对符号
-        this.logger.debug(`${symbol} 交易对不存在或已下架`);
-        return false;
-      }
-      
-      // 其他错误（如网络问题）暂时认为是有效的，后续再处理
-      this.logger.debug(`${symbol} 历史数据检查出错，暂时保留: ${error.message}`);
-      return true;
-    }
-  }
-
-  /**
-   * 统计数据获取成功率
-   */
-  private calculateDataSuccessRate(volumeWindows: Map<string, VolumeWindow>): {
-    total: number;
-    successful: number;
-    failed: number;
-    successRate: number;
-    failedSymbols: string[];
-  } {
-    const total = volumeWindows.size;
-    const failedSymbols: string[] = [];
-    
-    for (const [symbol, window] of volumeWindows) {
-      if (!window.data || window.data.length === 0) {
-        failedSymbols.push(symbol);
-      }
-    }
-    
-    const failed = failedSymbols.length;
-    const successful = total - failed;
-    const successRate = total > 0 ? (successful / total) * 100 : 0;
-    
-    return {
-      total,
-      successful,
-      failed,
-      successRate,
-      failedSymbols
+  private generateFilterHash(
+    startTime: Date,
+    params: VolumeBacktestParamsDto
+  ): string {
+    const filterCriteria = {
+      referenceTime: startTime.toISOString().slice(0, 10), // 只使用日期部分
+      quoteAsset: params.quoteAsset || 'USDT',
+      minVolumeThreshold: params.minVolumeThreshold || 10000,
+      minHistoryDays: params.minHistoryDays || 365,
+      requireFutures: params.requireFutures || false,
+      excludeStablecoins: params.excludeStablecoins ?? true,
+      includeInactive: params.includeInactive || false,
     };
+
+    const criteriaString = JSON.stringify(filterCriteria, Object.keys(filterCriteria).sort());
+    return createHash('sha256').update(criteriaString).digest('hex');
   }
 
   /**
-   * 记录数据获取统计信息
+   * 从缓存中获取筛选结果
    */
-  private logDataStatistics(volumeWindows: Map<string, VolumeWindow>, context: string): void {
-    const stats = this.calculateDataSuccessRate(volumeWindows);
-    
-    this.logger.log(`📊 ${context} 数据统计:`);
-    this.logger.log(`   总交易对数: ${stats.total}`);
-    this.logger.log(`   成功获取: ${stats.successful} (${stats.successRate.toFixed(1)}%)`);
-    
-    if (stats.failed > 0) {
-      this.logger.warn(`   获取失败: ${stats.failed} (${(100 - stats.successRate).toFixed(1)}%)`);
+  private async getFilterFromCache(filterHash: string): Promise<{
+    valid: string[];
+    invalid: string[];
+    invalidReasons: { [symbol: string]: string[] };
+  } | null> {
+    try {
+      const cached = await this.symbolFilterCacheModel.findOne({ filterHash });
       
-      // 显示前几个失败的交易对
-      const sampleFailed = stats.failedSymbols.slice(0, 5);
-      this.logger.warn(`   失败交易对示例: ${sampleFailed.join(', ')}${stats.failedSymbols.length > 5 ? '...' : ''}`);
+      if (!cached) {
+        return null;
+      }
+
+      // 更新最后使用时间和命中次数
+      await this.symbolFilterCacheModel.updateOne(
+        { filterHash },
+        { 
+          $set: { lastUsedAt: new Date() },
+          $inc: { hitCount: 1 }
+        }
+      );
+
+      this.logger.log(`🎯 缓存命中! 使用已存储的筛选结果 (${cached.validSymbols.length} 个有效交易对)`);
+      this.logger.log(`   缓存创建时间: ${cached.createdAt.toISOString().slice(0, 19)}`);
+      this.logger.log(`   缓存命中次数: ${cached.hitCount + 1}`);
+
+      return {
+        valid: cached.validSymbols,
+        invalid: cached.invalidSymbols,
+        invalidReasons: cached.invalidReasons,
+      };
+
+    } catch (error) {
+      this.logger.warn(`缓存查询失败: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * 将筛选结果保存到缓存
+   */
+  private async saveFilterToCache(
+    filterHash: string,
+    startTime: Date,
+    params: VolumeBacktestParamsDto,
+    filterResult: {
+      valid: string[];
+      invalid: string[];
+      invalidReasons: { [symbol: string]: string[] };
+    },
+    allSymbols: string[],
+    processingTime: number
+  ): Promise<void> {
+    try {
+      // 计算统计信息
+      const reasonStats: { [reason: string]: number } = {};
+      Object.values(filterResult.invalidReasons).forEach(reasons => {
+        reasons.forEach(reason => {
+          reasonStats[reason] = (reasonStats[reason] || 0) + 1;
+        });
+      });
+
+      const validRate = ((filterResult.valid.length / allSymbols.length) * 100).toFixed(1);
+
+      const filterCriteria = {
+        referenceTime: startTime.toISOString().slice(0, 10),
+        quoteAsset: params.quoteAsset,
+        minVolumeThreshold: params.minVolumeThreshold || 10000,
+        minHistoryDays: params.minHistoryDays || 365,
+        requireFutures: params.requireFutures || false,
+        excludeStablecoins: params.excludeStablecoins ?? true,
+        includeInactive: params.includeInactive || false,
+      };
+
+      const statistics = {
+        totalDiscovered: allSymbols.length,
+        validSymbols: filterResult.valid.length,
+        invalidSymbols: filterResult.invalid.length,
+        validRate: validRate + '%',
+        reasonStats,
+      };
+
+      // 使用 upsert 以防重复
+      await this.symbolFilterCacheModel.updateOne(
+        { filterHash },
+        {
+          $set: {
+            filterCriteria,
+            validSymbols: filterResult.valid,
+            invalidSymbols: filterResult.invalid,
+            invalidReasons: filterResult.invalidReasons,
+            statistics,
+            processingTime,
+            lastUsedAt: new Date(),
+          },
+          $inc: { hitCount: 0 }, // 如果是新记录，hitCount 为 0
+        },
+        { upsert: true }
+      );
+
+      this.logger.log(`💾 筛选结果已保存到缓存 (Hash: ${filterHash.slice(0, 8)}...)`);
+      this.logger.log(`   有效交易对: ${filterResult.valid.length}/${allSymbols.length} (${validRate}%)`);
+
+    } catch (error) {
+      this.logger.warn(`保存筛选结果到缓存失败: ${error.message}`);
+      // 不抛出错误，因为缓存失败不应该影响主流程
+    }
+  }
+
+  /**
+   * 清理过期的缓存记录
+   */
+  async cleanupFilterCache(olderThanDays: number = 30): Promise<void> {
+    try {
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - olderThanDays);
+
+      const result = await this.symbolFilterCacheModel.deleteMany({
+        lastUsedAt: { $lt: cutoffDate }
+      });
+
+      this.logger.log(`🧹 清理了 ${result.deletedCount} 个过期的筛选缓存记录 ( 超过${olderThanDays}天未使用)`);
+
+    } catch (error) {
+      this.logger.error(`清理筛选缓存失败: ${error.message}`);
+    }
+  }
+
+  /**
+   * 获取缓存统计信息
+   */
+  async getFilterCacheStats(): Promise<{
+    totalCaches: number;
+    totalHitCount: number;
+    avgHitCount: number;
+    oldestCache: Date | null;
+    newestCache: Date | null;
+  }> {
+    try {
+      const stats = await this.symbolFilterCacheModel.aggregate([
+        {
+          $group: {
+            _id: null,
+            totalCaches: { $sum: 1 },
+            totalHitCount: { $sum: '$hitCount' },
+            avgHitCount: { $avg: '$hitCount' },
+            oldestCache: { $min: '$createdAt' },
+            newestCache: { $max: '$createdAt' },
+          }
+        }
+      ]);
+
+      return stats[0] || {
+        totalCaches: 0,
+        totalHitCount: 0,
+        avgHitCount: 0,
+        oldestCache: null,
+        newestCache: null,
+      };
+
+    } catch (error) {
+      this.logger.error(`获取缓存统计失败: ${error.message}`);
+      return {
+        totalCaches: 0,
+        totalHitCount: 0,
+        avgHitCount: 0,
+        oldestCache: null,
+        newestCache: null,
+      };
     }
   }
 
@@ -1033,21 +1159,18 @@ export class BinanceVolumeBacktestService {
    */
   private aggregateInvalidReasons(invalidReasons: { [symbol: string]: string[] }): { [reason: string]: number } {
     const reasonStats: { [reason: string]: number } = {};
-    
     Object.values(invalidReasons).forEach(reasons => {
       reasons.forEach(reason => {
         reasonStats[reason] = (reasonStats[reason] || 0) + 1;
       });
     });
-    
     return reasonStats;
   }
 
   /**
-   * 检查交易对是否为稳定币相关
+   * 检查是否为稳定币交易对
    */
   private isStablecoinPair(symbol: string): boolean {
-    // 提取基础资产（去除报价资产）
     const baseAsset = this.extractBaseAsset(symbol);
     return this.STABLECOINS.includes(baseAsset);
   }
@@ -1056,7 +1179,6 @@ export class BinanceVolumeBacktestService {
    * 从交易对中提取基础资产
    */
   private extractBaseAsset(symbol: string): string {
-    // 常见的报价资产列表
     const quoteAssets = ['USDT', 'USDC', 'BTC', 'ETH', 'BNB', 'BUSD', 'FDUSD'];
     
     for (const quote of quoteAssets) {
@@ -1065,7 +1187,97 @@ export class BinanceVolumeBacktestService {
       }
     }
     
-    // 如果没有匹配到常见报价资产，返回整个symbol（可能是不常见的交易对）
     return symbol;
+  }
+
+  /**
+   * 检查单个交易对的历史数据是否充足
+   */
+  private async checkSymbolHistoryData(
+    symbol: string,
+    historyStart: Date,
+    historyEnd: Date
+  ): Promise<boolean> {
+    try {
+      const testKlines = await this.binanceService.getKlines({
+        symbol,
+        interval: '1d',
+        startTime: historyStart.getTime(),
+        endTime: historyEnd.getTime(),
+        limit: 10,
+      });
+
+      if (!testKlines || testKlines.length === 0) {
+        return false;
+      }
+
+      const earliestTime = testKlines[0].openTime;
+      const requiredTime = historyStart.getTime();
+      const timeDifference = Math.abs(earliestTime - requiredTime);
+      const daysDifference = timeDifference / (24 * 60 * 60 * 1000);
+
+      return daysDifference <= 30;
+
+    } catch (error) {
+      if (error.response?.status === 400 && error.response?.data?.code === -1121) {
+        return false;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * 记录数据统计信息
+   */
+  private logDataStatistics(volumeWindows: Map<string, VolumeWindow>, stage: string): void {
+    const totalSymbols = volumeWindows.size;
+    let symbolsWithData = 0;
+    let totalDataPoints = 0;
+
+    for (const [symbol, window] of volumeWindows) {
+      if (window.data.length > 0) {
+        symbolsWithData++;
+        totalDataPoints += window.data.length;
+      }
+    }
+
+    const avgDataPoints = symbolsWithData > 0 ? (totalDataPoints / symbolsWithData).toFixed(1) : '0';
+    const dataRate = totalSymbols > 0 ? ((symbolsWithData / totalSymbols) * 100).toFixed(1) : '0';
+
+    this.logger.log(`📊 ${stage} 数据统计:`);
+    this.logger.log(`   交易对总数: ${totalSymbols}`);
+    this.logger.log(`   有数据的交易对: ${symbolsWithData} (${dataRate}%)`);
+    this.logger.log(`   平均数据点数: ${avgDataPoints}`);
+  }
+
+  /**
+   * 计算数据成功率
+   */
+  private calculateDataSuccessRate(volumeWindows: Map<string, VolumeWindow>): {
+    totalSymbols: number;
+    successfulSymbols: number;
+    successRate: string;
+    failedSymbols: string[];
+  } {
+    const totalSymbols = volumeWindows.size;
+    let successfulSymbols = 0;
+    const failedSymbols: string[] = [];
+
+    for (const [symbol, window] of volumeWindows) {
+      if (window.data.length > 0) {
+        successfulSymbols++;
+      } else {
+        failedSymbols.push(symbol);
+      }
+    }
+
+    const successRate = totalSymbols > 0 ? ((successfulSymbols / totalSymbols) * 100).toFixed(1) : '0';
+
+    return {
+      totalSymbols,
+      successfulSymbols,
+      successRate: successRate + '%',
+      failedSymbols: failedSymbols.slice(0, 10), // 只显示前10个失败的
+    };
   }
 }

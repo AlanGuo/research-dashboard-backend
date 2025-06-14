@@ -23,14 +23,17 @@ export class BinanceVolumeBacktestController {
       const startTime = new Date(params.startTime);
       const endTime = new Date(params.endTime);
       const timeDiff = endTime.getTime() - startTime.getTime();
-      const maxDuration = 7 * 24 * 60 * 60 * 1000; // 最大7天
+      const maxRecommendedDuration = 7 * 24 * 60 * 60 * 1000; // 推荐最大7天
 
       if (timeDiff <= 0) {
         throw new HttpException('结束时间必须大于开始时间', HttpStatus.BAD_REQUEST);
       }
 
-      if (timeDiff > maxDuration) {
-        throw new HttpException('回测时间范围不能超过7天', HttpStatus.BAD_REQUEST);
+      // 如果超过推荐时间，添加警告日志
+      if (timeDiff > maxRecommendedDuration) {
+        const durationDays = Math.ceil(timeDiff / (24 * 60 * 60 * 1000));
+        this.logger.warn(`⚠️ 回测时间范围较长 (${durationDays} 天)，可能需要较长处理时间和更多API调用`);
+        this.logger.warn(`   建议分批执行或使用更大的granularityHours来减少计算量`);
       }
 
       const result = await this.volumeBacktestService.executeVolumeBacktest(params);
@@ -195,6 +198,48 @@ export class BinanceVolumeBacktestController {
       throw new HttpException(
         error.message || '期货API测试失败',
         error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * 获取筛选缓存统计信息
+   * GET /v1/binance/volume-backtest/cache-stats
+   */
+  @Get('cache-stats')
+  async getCacheStats() {
+    try {
+      const stats = await this.volumeBacktestService.getFilterCacheStats();
+      return {
+        success: true,
+        data: stats,
+      };
+    } catch (error) {
+      this.logger.error('获取缓存统计失败:', error);
+      throw new HttpException(
+        error.message || '获取缓存统计失败',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * 清理过期缓存
+   * POST /v1/binance/volume-backtest/cache-cleanup
+   */
+  @Post('cache-cleanup')
+  async cleanupCache(@Body() params: { olderThanDays?: number }) {
+    try {
+      await this.volumeBacktestService.cleanupFilterCache(params.olderThanDays);
+      return {
+        success: true,
+        message: '缓存清理完成',
+      };
+    } catch (error) {
+      this.logger.error('清理缓存失败:', error);
+      throw new HttpException(
+        error.message || '清理缓存失败',
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
