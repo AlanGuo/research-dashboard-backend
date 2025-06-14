@@ -282,18 +282,30 @@ export class BinanceVolumeBacktestService {
     const hourEnd = hourStart + 60 * 60 * 1000;
     const window24hStart = hourStart - 24 * 60 * 60 * 1000;
 
+    const symbols = Array.from(volumeWindows.keys());
+    this.logger.log(`📊 开始并发更新 ${symbols.length} 个交易对的数据 (${currentTime.toISOString().slice(0, 16)})`);
+
+    // 使用并发批量获取当前小时的K线数据
+    const concurrentBatchSize = 20; // 更新时可以用更大的批次
+    const maxRetries = 2;
+    
+    const klinesResults = await this.loadSymbolKlinesBatch(
+      symbols,
+      new Date(hourStart),
+      new Date(hourEnd),
+      maxRetries,
+      concurrentBatchSize
+    );
+
+    // 处理获取结果
+    let successCount = 0;
+    let failureCount = 0;
     const failedSymbols: string[] = [];
 
-    // 第一轮：尝试获取所有交易对的数据
-    for (const [symbol, window] of volumeWindows) {
-      try {
-        // 获取当前小时的K线数据（已经包含重试机制）
-        const newKlines = await this.loadSymbolKlines(
-          symbol,
-          new Date(hourStart),
-          new Date(hourEnd)
-        );
-
+    for (const [symbol, newKlines] of klinesResults) {
+      const window = volumeWindows.get(symbol);
+      
+      if (window) {
         if (newKlines && newKlines.length > 0) {
           // 添加新数据
           window.data.push(...newKlines);
@@ -303,48 +315,60 @@ export class BinanceVolumeBacktestService {
 
           // 重新计算24小时成交量
           this.updateWindowVolume(window);
+          successCount++;
+          
+          this.logger.debug(`✅ ${symbol}: 更新了 ${newKlines.length} 条新K线，窗口总计 ${window.data.length} 条`);
         } else {
           failedSymbols.push(symbol);
+          failureCount++;
         }
-      } catch (error) {
-        this.logger.warn(`更新 ${symbol} 数据失败:`, error);
-        failedSymbols.push(symbol);
       }
-
-      await this.delay(this.configService.binanceRequestDelay);
     }
 
-    // 第二轮：处理失败的交易对
-    if (failedSymbols.length > 0) {
-      this.logger.log(`🔄 ${failedSymbols.length} 个交易对数据获取失败，开始重试...`);
+    const successRate = ((successCount / symbols.length) * 100).toFixed(1);
+    this.logger.log(`📊 数据更新完成: 成功 ${successCount}/${symbols.length} (${successRate}%), 失败 ${failureCount}`);
+
+    // 对失败的交易对进行单独重试
+    if (failedSymbols.length > 0 && failedSymbols.length < symbols.length * 0.3) {
+      this.logger.log(`🔄 对 ${failedSymbols.length} 个失败的交易对进行单独重试...`);
+      
+      let retrySuccessCount = 0;
       
       for (const symbol of failedSymbols) {
         try {
-          // 增加重试次数为2次
-          const newKlines = await this.loadSymbolKlines(
+          const result = await this.loadSymbolKlinesWithRetry(
             symbol,
             new Date(hourStart),
             new Date(hourEnd),
-            2 // 重试2次
+            3 // 增加重试次数
           );
 
-          if (newKlines && newKlines.length > 0) {
+          if (result.data && result.data.length > 0) {
             const window = volumeWindows.get(symbol);
             if (window) {
-              window.data.push(...newKlines);
+              window.data.push(...result.data);
               window.data = window.data.filter(kline => kline.openTime >= window24hStart);
               this.updateWindowVolume(window);
-              this.logger.log(`✅ 重试成功获取 ${symbol} 数据`);
+              retrySuccessCount++;
+              
+              this.logger.debug(`✅ ${symbol}: 重试成功，更新了 ${result.data.length} 条K线`);
             }
           } else {
-            this.logger.warn(`❌ 重试后仍无法获取 ${symbol} 数据`);
+            this.logger.warn(`❌ ${symbol}: 重试后仍然失败 - ${result.error}`);
           }
+          
+          // 重试时使用稍长的延迟
+          await this.delay(this.configService.binanceRequestDelay * 1.5);
+          
         } catch (error) {
-          this.logger.error(`❌ 重试 ${symbol} 时出错:`, error);
+          this.logger.error(`💥 ${symbol}: 重试时发生异常 - ${error.message}`);
         }
-
-        // 重试时使用更长的延迟
-        await this.delay(this.configService.binanceRequestDelay * 2);
+      }
+      
+      if (retrySuccessCount > 0) {
+        const finalSuccessCount = successCount + retrySuccessCount;
+        const finalSuccessRate = ((finalSuccessCount / symbols.length) * 100).toFixed(1);
+        this.logger.log(`🎯 重试完成: 额外成功 ${retrySuccessCount} 个，总成功率 ${finalSuccessRate}%`);
       }
     }
   }
@@ -450,7 +474,8 @@ export class BinanceVolumeBacktestService {
     maxRetries: number = 3
   ): Promise<KlineData[] | null> {
     const timeRange = `${startTime.toISOString().slice(0, 16)} - ${endTime.toISOString().slice(0, 16)}`;
-    this.logger.debug(`🔍 开始获取 ${symbol} K线数据 (${timeRange})`);
+    // 将日志级别从DEBUG调整为更高级别，避免批量获取时的干扰
+    // this.logger.debug(`🔍 开始获取 ${symbol} K线数据 (${timeRange})`);
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
@@ -464,9 +489,11 @@ export class BinanceVolumeBacktestService {
         
         if (attempt > 1) {
           this.logger.log(`✅ ${symbol} K线数据重试获取成功 - 第${attempt}次尝试，获得${klines?.length || 0}条数据`);
-        } else {
-          this.logger.debug(`✅ ${symbol} K线数据获取成功 - 获得${klines?.length || 0}条数据`);
         }
+        // 取消成功时的DEBUG日志，避免串行日志干扰
+        // else {
+        //   this.logger.debug(`✅ ${symbol} K线数据获取成功 - 获得${klines?.length || 0}条数据`);
+        // }
         
         return klines;
       } catch (error) {
@@ -704,55 +731,54 @@ export class BinanceVolumeBacktestService {
     startTime: Date,
     endTime: Date
   ): Promise<void> {
-    this.logger.log('📊 开始预加载初始数据窗口（带重试机制）...');
+    this.logger.log('📊 开始并发预加载初始数据窗口（带重试机制）...');
     
-    const batchSize = 10;
     const symbols = Array.from(volumeWindows.keys());
-    const totalBatches = Math.ceil(symbols.length / batchSize);
+    const timeRange = `${startTime.toISOString().slice(0, 16)} - ${endTime.toISOString().slice(0, 16)}`;
     
-    this.logger.log(`📦 需要处理 ${symbols.length} 个交易对，分为 ${totalBatches} 个批次`);
+    this.logger.log(`📦 需要处理 ${symbols.length} 个交易对的数据 (${timeRange})`);
     
-    for (let i = 0; i < symbols.length; i += batchSize) {
-      const batch = symbols.slice(i, i + batchSize);
-      const batchNumber = Math.floor(i / batchSize) + 1;
+    // 使用并发批量获取
+    const concurrentBatchSize = 15; // 并发批次大小
+    const maxRetries = 3;
+    
+    const klinesResults = await this.loadSymbolKlinesBatch(
+      symbols,
+      startTime,
+      endTime,
+      maxRetries,
+      concurrentBatchSize
+    );
+    
+    // 处理获取结果
+    let successCount = 0;
+    let failureCount = 0;
+    const failedSymbols: string[] = [];
+    
+    for (const [symbol, klines] of klinesResults) {
+      const window = volumeWindows.get(symbol);
       
-      const progress = ((batchNumber / totalBatches) * 100).toFixed(1);
-      const sampleSymbols = batch.slice(0, 3).join(', ') + (batch.length > 3 ? '...' : '');
-      this.logger.log(`⏳ 预加载进度: ${batchNumber}/${totalBatches} (${progress}%) - 处理: ${sampleSymbols}`);
-      
-      // 改进的批量处理：逐个处理而不是Promise.all，避免单个失败影响整批
-      let batchSuccessCount = 0;
-      let batchFailCount = 0;
-      
-      for (const symbol of batch) {
-        try {
-          const klines = await this.loadSymbolKlines(symbol, startTime, endTime);
-          const window = volumeWindows.get(symbol);
-          
-          if (window && klines && klines.length > 0) {
-            window.data = klines;
-            this.updateWindowVolume(window);
-            batchSuccessCount++;
-          } else if (window) {
-            this.logger.warn(`⚠️ ${symbol} 预加载数据为空 (时间段: ${startTime.toISOString().slice(0, 16)} - ${endTime.toISOString().slice(0, 16)})`);
-            batchFailCount++;
-          }
-        } catch (error) {
-          this.logger.warn(`⚠️ 预加载 ${symbol} 失败: ${error.message}`);
-          batchFailCount++;
-        }
-
-        // API限流控制
-        await this.delay(this.configService.binanceRequestDelay);
+      if (window && klines && klines.length > 0) {
+        window.data = klines;
+        this.updateWindowVolume(window);
+        successCount++;
+        this.logger.debug(`✅ ${symbol}: 预加载了 ${klines.length} 条K线数据`);
+      } else if (window) {
+        failedSymbols.push(symbol);
+        failureCount++;
+        this.logger.warn(`⚠️ ${symbol}: 预加载数据为空或失败`);
       }
-      
-      // 记录批次处理结果
-      this.logger.log(`📊 批次 ${batchNumber} 完成: 成功 ${batchSuccessCount}/${batch.length}, 失败 ${batchFailCount}/${batch.length}`);
+    }
+    
+    const successRate = ((successCount / symbols.length) * 100).toFixed(1);
+    this.logger.log(`📊 预加载完成: 成功 ${successCount}/${symbols.length} (${successRate}%), 失败 ${failureCount}`);
+    
+    // 如果有失败的，可以选择性重试
+    if (failedSymbols.length > 0 && failedSymbols.length < symbols.length * 0.2) {
+      this.logger.log(`� 对 ${failedSymbols.length} 个失败的交易对进行单独重试...`);
+      await this.retryFailedPreload(volumeWindows, failedSymbols, startTime, endTime);
     }
 
-    // 预加载完成后，尝试重新获取失败的数据
-    const retryResult = await this.retryFailedData(volumeWindows, startTime, endTime);
-    
     // 记录最终统计信息
     this.logDataStatistics(volumeWindows, '预加载完成后');
     
@@ -760,6 +786,57 @@ export class BinanceVolumeBacktestService {
     const successRateNum = parseFloat(stats.successRate.replace('%', ''));
     if (successRateNum < 90) {
       this.logger.warn(`⚠️ 数据获取成功率较低 (${stats.successRate})，可能影响回测准确性`);
+    }
+  }
+
+  /**
+   * 对失败的预加载进行单独重试
+   */
+  private async retryFailedPreload(
+    volumeWindows: Map<string, VolumeWindow>,
+    failedSymbols: string[],
+    startTime: Date,
+    endTime: Date
+  ): Promise<void> {
+    if (failedSymbols.length === 0) return;
+    
+    this.logger.log(`🔄 开始单独重试 ${failedSymbols.length} 个失败的交易对...`);
+    
+    let retrySuccessCount = 0;
+    const stillFailedSymbols: string[] = [];
+    
+    // 对失败的交易对逐个重试，使用更长的延迟
+    for (const symbol of failedSymbols) {
+      try {
+        const result = await this.loadSymbolKlinesWithRetry(symbol, startTime, endTime, 5); // 增加重试次数
+        
+        if (result.data && result.data.length > 0) {
+          const window = volumeWindows.get(symbol);
+          if (window) {
+            window.data = result.data;
+            this.updateWindowVolume(window);
+            retrySuccessCount++;
+            this.logger.debug(`✅ ${symbol}: 重试成功，获得 ${result.data.length} 条数据`);
+          }
+        } else {
+          stillFailedSymbols.push(symbol);
+          this.logger.warn(`❌ ${symbol}: 重试仍然失败 - ${result.error}`);
+        }
+        
+        // 重试时使用更长的延迟
+        await this.delay(this.configService.binanceRequestDelay * 2);
+        
+      } catch (error) {
+        stillFailedSymbols.push(symbol);
+        this.logger.error(`💥 ${symbol}: 重试时发生异常 - ${error.message}`);
+      }
+    }
+    
+    const retrySuccessRate = ((retrySuccessCount / failedSymbols.length) * 100).toFixed(1);
+    this.logger.log(`📊 重试完成: 成功 ${retrySuccessCount}/${failedSymbols.length} (${retrySuccessRate}%)`);
+    
+    if (stillFailedSymbols.length > 0) {
+      this.logger.warn(`⚠️ 仍有 ${stillFailedSymbols.length} 个交易对无法获取数据: ${stillFailedSymbols.slice(0, 5).join(', ')}${stillFailedSymbols.length > 5 ? '...' : ''}`);
     }
   }
 
@@ -1279,5 +1356,142 @@ export class BinanceVolumeBacktestService {
       successRate: successRate + '%',
       failedSymbols: failedSymbols.slice(0, 10), // 只显示前10个失败的
     };
+  }
+
+  /**
+   * 并发批量获取K线数据
+   */
+  private async loadSymbolKlinesBatch(
+    symbols: string[],
+    startTime: Date,
+    endTime: Date,
+    maxRetries: number = 3,
+    batchSize: number = 10
+  ): Promise<Map<string, KlineData[] | null>> {
+    const results = new Map<string, KlineData[] | null>();
+    const timeRange = `${startTime.toISOString().slice(0, 16)} - ${endTime.toISOString().slice(0, 16)}`;
+    
+    this.logger.log(`🚀 开始并发获取 ${symbols.length} 个交易对的K线数据 (${timeRange})`);
+    this.logger.log(`   批次大小: ${batchSize}, 最大重试: ${maxRetries} 次`);
+    
+    // 分批处理，避免过多并发请求
+    const totalBatches = Math.ceil(symbols.length / batchSize);
+    let successCount = 0;
+    let failureCount = 0;
+    
+    for (let i = 0; i < symbols.length; i += batchSize) {
+      const batch = symbols.slice(i, i + batchSize);
+      const batchNumber = Math.floor(i / batchSize) + 1;
+      
+      this.logger.log(`📦 处理批次 ${batchNumber}/${totalBatches}: ${batch.slice(0, 3).join(', ')}${batch.length > 3 ? '...' : ''}`);
+      
+      // 并发获取当前批次的数据
+      const batchPromises = batch.map(symbol => 
+        this.loadSymbolKlinesWithRetry(symbol, startTime, endTime, maxRetries)
+          .then(result => ({ symbol, data: result.data, error: result.error }))
+      );
+      
+      try {
+        const batchResults = await Promise.allSettled(batchPromises);
+        
+        // 处理批次结果
+        for (let j = 0; j < batchResults.length; j++) {
+          const result = batchResults[j];
+          const symbol = batch[j];
+          
+          if (result.status === 'fulfilled') {
+            const { data, error } = result.value;
+            results.set(symbol, data);
+            
+            if (data) {
+              successCount++;
+              // 批量获取时减少个别symbol的日志，只在DEBUG模式下显示
+              // this.logger.debug(`✅ ${symbol}: ${data.length} 条数据`);
+            } else {
+              failureCount++;
+              this.logger.warn(`❌ ${symbol}: ${error || '获取失败'}`);
+            }
+          } else {
+            // Promise被拒绝
+            results.set(symbol, null);
+            failureCount++;
+            this.logger.error(`💥 ${symbol}: Promise拒绝 - ${result.reason}`);
+          }
+        }
+        
+        // 批次间延迟，避免API限制
+        if (batchNumber < totalBatches) {
+          const batchDelay = this.configService.binanceRequestDelay * batchSize;
+          this.logger.debug(`⏸️ 批次间延迟 ${batchDelay}ms...`);
+          await this.delay(batchDelay);
+        }
+        
+      } catch (error) {
+        // 整个批次失败的情况（极少见）
+        this.logger.error(`💥 批次 ${batchNumber} 整体失败: ${error.message}`);
+        batch.forEach(symbol => {
+          results.set(symbol, null);
+          failureCount++;
+        });
+      }
+    }
+    
+    const successRate = ((successCount / symbols.length) * 100).toFixed(1);
+    this.logger.log(`📊 并发获取完成: 成功 ${successCount}/${symbols.length} (${successRate}%), 失败 ${failureCount}`);
+    
+    if (failureCount > 0) {
+      const failedSymbols = Array.from(results.entries())
+        .filter(([_, data]) => data === null)
+        .map(([symbol, _]) => symbol)
+        .slice(0, 10);
+      this.logger.warn(`   失败的交易对示例: ${failedSymbols.join(', ')}${failureCount > 10 ? '...' : ''}`);
+    }
+    
+    return results;
+  }
+
+  /**
+   * 带重试的单个K线数据获取（返回结果和错误信息）
+   */
+  private async loadSymbolKlinesWithRetry(
+    symbol: string,
+    startTime: Date,
+    endTime: Date,
+    maxRetries: number = 3
+  ): Promise<{ data: KlineData[] | null; error?: string }> {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const klines = await this.binanceService.getKlines({
+          symbol,
+          interval: '1h',
+          startTime: startTime.getTime(),
+          endTime: endTime.getTime(),
+          limit: 1000,
+        });
+        
+        if (attempt > 1) {
+          this.logger.debug(`🔄 ${symbol} 重试成功 (第${attempt}次)`);
+        }
+        
+        return { data: klines };
+        
+      } catch (error) {
+        const isLastAttempt = attempt === maxRetries;
+        const errorMsg = error.response?.data?.msg || error.message || '未知错误';
+        
+        if (isLastAttempt) {
+          return { 
+            data: null, 
+            error: `最终失败 (${maxRetries}次重试): ${errorMsg}` 
+          };
+        } else {
+          // 指数退避策略
+          const delayTime = this.configService.binanceRequestDelay * Math.pow(2, attempt - 1);
+          await this.delay(delayTime);
+        }
+      }
+    }
+    
+    return { data: null, error: '重试次数耗尽' };
   }
 }
