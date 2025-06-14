@@ -42,6 +42,14 @@ export class ConfigService {
     return this.configService.get<string>('notion.api_key');
   }
 
+  get binanceApiUrl(): string {
+    return this.configService.get<string>('binance.api_url');
+  }
+
+  get binanceRequestDelay(): number {
+    return this.configService.get<number>('binance.request_delay');
+  }
+
   getNotionDatabaseId(user: string, databaseType: string): string {
     return this.configService.get<string>(
       `notion.user.${user}.${databaseType}`,

@@ -1,2 +1,2 @@
 #!/bin/bash
-NODE_ENV=production npm run start:prod
+NODE_ENV=production yarn start:prod

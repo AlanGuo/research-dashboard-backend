@@ -1,9 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import axios from 'axios';
 import { VolumeBacktest, VolumeBacktestDocument, HourlyVolumeRankingItem } from '../models/volume-backtest.model';
 import { VolumeBacktestParamsDto, VolumeBacktestResponse } from '../dto/volume-backtest-params.dto';
+import { ConfigService } from '../config/config.service';
+import { BinanceService } from './binance.service';
 
 interface KlineData {
   openTime: number;
@@ -29,12 +30,12 @@ interface VolumeWindow {
 @Injectable()
 export class BinanceVolumeBacktestService {
   private readonly logger = new Logger(BinanceVolumeBacktestService.name);
-  private readonly binanceApiUrl = 'https://api.binance.com';
-  private readonly requestDelay = 100; // API请求间隔(ms)
 
   constructor(
     @InjectModel(VolumeBacktest.name)
     private volumeBacktestModel: Model<VolumeBacktestDocument>,
+    private readonly configService: ConfigService,
+    private readonly binanceService: BinanceService,
   ) {}
 
   /**
@@ -98,8 +99,8 @@ export class BinanceVolumeBacktestService {
    */
   private async getActiveSymbols(params: VolumeBacktestParamsDto): Promise<string[]> {
     try {
-      const response = await axios.get(`${this.binanceApiUrl}/api/v3/exchangeInfo`);
-      const symbols = response.data.symbols
+      const exchangeInfo = await this.binanceService.getExchangeInfo();
+      const symbols = exchangeInfo.symbols
         .filter(symbol => 
           symbol.status === 'TRADING' &&
           symbol.quoteAsset === (params.quoteAsset || 'USDT') &&
@@ -213,7 +214,7 @@ export class BinanceVolumeBacktestService {
       }
 
       // API限流控制
-      await this.delay(this.requestDelay * batchSize);
+      await this.delay(this.configService.binanceRequestDelay * batchSize);
     }
   }
 
@@ -251,7 +252,7 @@ export class BinanceVolumeBacktestService {
         this.logger.warn(`更新 ${symbol} 数据失败:`, error);
       }
 
-      await this.delay(this.requestDelay);
+      await this.delay(this.configService.binanceRequestDelay);
     }
   }
 
@@ -264,29 +265,13 @@ export class BinanceVolumeBacktestService {
     endTime: Date
   ): Promise<KlineData[] | null> {
     try {
-      const response = await axios.get(`${this.binanceApiUrl}/api/v3/klines`, {
-        params: {
-          symbol,
-          interval: '1h',
-          startTime: startTime.getTime(),
-          endTime: endTime.getTime(),
-          limit: 1000,
-        },
+      return await this.binanceService.getKlines({
+        symbol,
+        interval: '1h',
+        startTime: startTime.getTime(),
+        endTime: endTime.getTime(),
+        limit: 1000,
       });
-
-      return response.data.map(kline => ({
-        openTime: kline[0],
-        open: kline[1],
-        high: kline[2],
-        low: kline[3],
-        close: kline[4],
-        volume: kline[5],
-        closeTime: kline[6],
-        quoteVolume: kline[7],
-        count: kline[8],
-        takerBuyVolume: kline[9],
-        takerBuyQuoteVolume: kline[10],
-      }));
     } catch (error) {
       this.logger.warn(`获取 ${symbol} K线数据失败:`, error);
       return null;
@@ -411,24 +396,6 @@ export class BinanceVolumeBacktestService {
    * 测试Binance API连通性
    */
   async testBinanceApi() {
-    try {
-      this.logger.log('开始测试Binance API连通性...');
-      
-      // 检查服务器时间
-      const timeResponse = await axios.get(`${this.binanceApiUrl}/api/v3/time`, {
-        timeout: 5000,
-      });
-      const serverTime = timeResponse.data.serverTime;
-      this.logger.log(`Binance服务器时间: ${new Date(serverTime).toISOString()}`);
-      
-      return {
-        success: true,
-        serverTime: new Date(serverTime).toISOString(),
-        message: 'Binance API连接正常'
-      };
-    } catch (error) {
-      this.logger.error('Binance API连通性测试失败:', error);
-      throw error;
-    }
+    return this.binanceService.testConnectivity();
   }
 }

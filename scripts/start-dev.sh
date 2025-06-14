@@ -1,2 +1,2 @@
 #!/bin/bash
-NODE_ENV=development npm run start:dev
+NODE_ENV=development yarn start:dev

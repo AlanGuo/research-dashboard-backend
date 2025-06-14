@@ -2,7 +2,7 @@ import { Controller, Post, Get, Query, Body, Logger, HttpException, HttpStatus }
 import { BinanceVolumeBacktestService } from '../services/binance-volume-backtest.service';
 import { VolumeBacktestParamsDto, VolumeBacktestQueryDto, VolumeBacktestResponse } from '../dto/volume-backtest-params.dto';
 
-@Controller('binance/volume-backtest')
+@Controller('/v1/binance/volume-backtest')
 export class BinanceVolumeBacktestController {
   private readonly logger = new Logger(BinanceVolumeBacktestController.name);
 

@@ -1,8 +1,9 @@
 const { HttpsProxyAgent } = require("https-proxy-agent");
 const WebSocket = require('ws');
 
-// ws/wss proxy to connect to
-var proxy = process.env.WSS_PROXY || process.env.WS_PROXY || null;
+// http/https proxy to connect to
+// 兼容大小写
+var proxy = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || process.env.https_proxy || process.env.http_proxy;
 const misc = require('./miscRequests');
 const protocol = require('./protocol');
 
