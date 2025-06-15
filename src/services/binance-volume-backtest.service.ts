@@ -1709,7 +1709,7 @@ export class BinanceVolumeBacktestService {
       if (rankings.length > 0) {
         await this.saveSingleBacktestResult({
           timestamp: currentTime,
-          hour: currentTime.getHours(),
+          hour: currentTime.getUTCHours(), // 使用UTC时间的小时数
           rankings,
           totalMarketVolume: marketStats.totalVolume,
           totalMarketQuoteVolume: marketStats.totalQuoteVolume,
