@@ -4,91 +4,91 @@ import {
   IsOptional,
   IsString,
   IsIn,
-} from 'class-validator';
-import { Transform, TransformFnParams } from 'class-transformer';
+} from "class-validator";
+import { Transform, TransformFnParams } from "class-transformer";
 
 export class GliParamsDto {
   @IsOptional()
   @IsBoolean()
   @Transform(
-    ({ value }: TransformFnParams) => value === 'true' || value === true,
+    ({ value }: TransformFnParams) => value === "true" || value === true,
   )
   fed_active?: boolean = true;
 
   @IsOptional()
   @IsBoolean()
   @Transform(
-    ({ value }: TransformFnParams) => value === 'true' || value === true,
+    ({ value }: TransformFnParams) => value === "true" || value === true,
   )
   tga_active?: boolean = true;
 
   @IsOptional()
   @IsBoolean()
   @Transform(
-    ({ value }: TransformFnParams) => value === 'true' || value === true,
+    ({ value }: TransformFnParams) => value === "true" || value === true,
   )
   rrp_active?: boolean = true;
 
   @IsOptional()
   @IsBoolean()
   @Transform(
-    ({ value }: TransformFnParams) => value === 'true' || value === true,
+    ({ value }: TransformFnParams) => value === "true" || value === true,
   )
   ecb_active?: boolean = true;
 
   @IsOptional()
   @IsBoolean()
   @Transform(
-    ({ value }: TransformFnParams) => value === 'true' || value === true,
+    ({ value }: TransformFnParams) => value === "true" || value === true,
   )
   pbc_active?: boolean = true;
 
   @IsOptional()
   @IsBoolean()
   @Transform(
-    ({ value }: TransformFnParams) => value === 'true' || value === true,
+    ({ value }: TransformFnParams) => value === "true" || value === true,
   )
   boj_active?: boolean = true;
 
   @IsOptional()
   @IsBoolean()
   @Transform(
-    ({ value }: TransformFnParams) => value === 'true' || value === true,
+    ({ value }: TransformFnParams) => value === "true" || value === true,
   )
   other_active?: boolean = false;
 
   @IsOptional()
   @IsBoolean()
   @Transform(
-    ({ value }: TransformFnParams) => value === 'true' || value === true,
+    ({ value }: TransformFnParams) => value === "true" || value === true,
   )
   usa_active?: boolean = false;
 
   @IsOptional()
   @IsBoolean()
   @Transform(
-    ({ value }: TransformFnParams) => value === 'true' || value === true,
+    ({ value }: TransformFnParams) => value === "true" || value === true,
   )
   europe_active?: boolean = false;
 
   @IsOptional()
   @IsBoolean()
   @Transform(
-    ({ value }: TransformFnParams) => value === 'true' || value === true,
+    ({ value }: TransformFnParams) => value === "true" || value === true,
   )
   china_active?: boolean = false;
 
   @IsOptional()
   @IsBoolean()
   @Transform(
-    ({ value }: TransformFnParams) => value === 'true' || value === true,
+    ({ value }: TransformFnParams) => value === "true" || value === true,
   )
   japan_active?: boolean = false;
 
   @IsOptional()
   @IsBoolean()
   @Transform(
-    ({ value }: TransformFnParams) => value === 'true' || value === true,
+    ({ value }: TransformFnParams) => value === "true" || value === true,
   )
   other_m2_active?: boolean = false;
 
@@ -97,7 +97,7 @@ export class GliParamsDto {
   @IsOptional()
   @IsNumber()
   @Transform(({ value }: TransformFnParams) =>
-    typeof value === 'string' ? parseInt(value, 10) : value,
+    typeof value === "string" ? parseInt(value, 10) : value,
   )
   limit?: number = 100;
 
@@ -105,7 +105,7 @@ export class GliParamsDto {
   @IsNumber()
   @Transform(({ value }: TransformFnParams) =>
     value
-      ? typeof value === 'string'
+      ? typeof value === "string"
         ? parseInt(value, 10)
         : value
       : undefined,
@@ -114,6 +114,6 @@ export class GliParamsDto {
 
   @IsOptional()
   @IsString()
-  @IsIn(['1D', '1W', '1M', '1d', '1w', '1m'])
-  interval?: string = '1D';
+  @IsIn(["1D", "1W", "1M", "1d", "1w", "1m"])
+  interval?: string = "1D";
 }

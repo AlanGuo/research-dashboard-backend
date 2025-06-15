@@ -1,11 +1,11 @@
-import { Controller, Get, Query } from '@nestjs/common';
-import { GliService } from '../services/gli.service';
-import { GliParamsDto } from '../dto/gli-params.dto';
-import { plainToInstance } from 'class-transformer';
-import { validate } from 'class-validator';
-import { GliTrendResponse } from '../models/gli-trend.model';
+import { Controller, Get, Query } from "@nestjs/common";
+import { GliService } from "../services/gli.service";
+import { GliParamsDto } from "../dto/gli-params.dto";
+import { plainToInstance } from "class-transformer";
+import { validate } from "class-validator";
+import { GliTrendResponse } from "../models/gli-trend.model";
 
-@Controller('v1/gli')
+@Controller("v1/gli")
 export class GliController {
   constructor(private readonly gliService: GliService) {}
 
@@ -19,7 +19,7 @@ export class GliController {
     if (errors.length > 0) {
       return {
         success: false,
-        error: 'Invalid parameters',
+        error: "Invalid parameters",
         errors,
         timestamp: new Date().toISOString(),
       };
@@ -28,7 +28,7 @@ export class GliController {
     return this.gliService.getGli(params);
   }
 
-  @Get('trend-periods')
+  @Get("trend-periods")
   async getTrendPeriods(@Query() queryParams): Promise<GliTrendResponse> {
     // 手动转换参数类型
     const params = plainToInstance(GliParamsDto, queryParams);
@@ -38,7 +38,7 @@ export class GliController {
     if (errors.length > 0) {
       return {
         success: false,
-        error: 'Invalid parameters',
+        error: "Invalid parameters",
         errors,
         timestamp: new Date().toISOString(),
         data: {

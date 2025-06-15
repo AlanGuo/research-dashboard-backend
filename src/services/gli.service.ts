@@ -1,8 +1,8 @@
-import { Injectable } from '@nestjs/common';
-import { TradingViewService } from './tradingview.service';
-import { GliParamsDto } from '../dto/gli-params.dto';
-import { GliDataPoint, GliResponse } from '../models/gli.model';
-import { GliTrendPeriod, GliTrendResponse } from '../models/gli-trend.model';
+import { Injectable } from "@nestjs/common";
+import { TradingViewService } from "./tradingview.service";
+import { GliParamsDto } from "../dto/gli-params.dto";
+import { GliDataPoint, GliResponse } from "../models/gli.model";
+import { GliTrendPeriod, GliTrendResponse } from "../models/gli-trend.model";
 
 @Injectable()
 export class GliService {
@@ -19,7 +19,7 @@ export class GliService {
           data: [],
           timestamp: new Date().toISOString(),
           params,
-          message: 'No data available from data sources',
+          message: "No data available from data sources",
         };
       }
 
@@ -46,7 +46,7 @@ export class GliService {
     const symbols = this.getRequiredSymbols(params);
 
     // Map the interval parameter to TradingView format
-    const interval = params.interval || '1D';
+    const interval = params.interval || "1D";
     const limit = params.limit || 100;
     const from = params.from;
 
@@ -86,90 +86,90 @@ export class GliService {
     const exchangeRatesNeeded = new Set<string>();
 
     // Central Banks
-    if (params.fed_active) symbols.push('USCBBS');
-    if (params.rrp_active) symbols.push('RRPONTSYD');
-    if (params.tga_active) symbols.push('WTREGEN');
+    if (params.fed_active) symbols.push("USCBBS");
+    if (params.rrp_active) symbols.push("RRPONTSYD");
+    if (params.tga_active) symbols.push("WTREGEN");
     if (params.ecb_active) {
-      symbols.push('EUCBBS');
-      exchangeRatesNeeded.add('EURUSD');
+      symbols.push("EUCBBS");
+      exchangeRatesNeeded.add("EURUSD");
     }
     if (params.pbc_active) {
-      symbols.push('CNCBBS');
-      exchangeRatesNeeded.add('CNYUSD');
+      symbols.push("CNCBBS");
+      exchangeRatesNeeded.add("CNYUSD");
     }
     if (params.boj_active) {
-      symbols.push('JPCBBS');
-      exchangeRatesNeeded.add('JPYUSD');
+      symbols.push("JPCBBS");
+      exchangeRatesNeeded.add("JPYUSD");
     }
     // Other Central Banks
     if (params.other_active) {
-      symbols.push('GBCBBS');
-      exchangeRatesNeeded.add('GBPUSD');
-      symbols.push('CACBBS');
-      exchangeRatesNeeded.add('CADUSD');
-      symbols.push('AUCBBS');
-      exchangeRatesNeeded.add('AUDUSD');
-      symbols.push('INCBBS');
-      exchangeRatesNeeded.add('INRUSD');
-      symbols.push('CHCBBS');
-      exchangeRatesNeeded.add('CHFUSD');
-      symbols.push('RUCBBS');
-      exchangeRatesNeeded.add('RUBUSD');
-      symbols.push('BRCBBS');
-      exchangeRatesNeeded.add('BRLUSD');
-      symbols.push('KRCBBS');
-      exchangeRatesNeeded.add('KRWUSD');
-      symbols.push('NZCBBS');
-      exchangeRatesNeeded.add('NZDUSD');
-      symbols.push('SECBBS');
-      exchangeRatesNeeded.add('SEKUSD');
-      symbols.push('MYCBBS');
-      exchangeRatesNeeded.add('MYRUSD');
+      symbols.push("GBCBBS");
+      exchangeRatesNeeded.add("GBPUSD");
+      symbols.push("CACBBS");
+      exchangeRatesNeeded.add("CADUSD");
+      symbols.push("AUCBBS");
+      exchangeRatesNeeded.add("AUDUSD");
+      symbols.push("INCBBS");
+      exchangeRatesNeeded.add("INRUSD");
+      symbols.push("CHCBBS");
+      exchangeRatesNeeded.add("CHFUSD");
+      symbols.push("RUCBBS");
+      exchangeRatesNeeded.add("RUBUSD");
+      symbols.push("BRCBBS");
+      exchangeRatesNeeded.add("BRLUSD");
+      symbols.push("KRCBBS");
+      exchangeRatesNeeded.add("KRWUSD");
+      symbols.push("NZCBBS");
+      exchangeRatesNeeded.add("NZDUSD");
+      symbols.push("SECBBS");
+      exchangeRatesNeeded.add("SEKUSD");
+      symbols.push("MYCBBS");
+      exchangeRatesNeeded.add("MYRUSD");
     }
 
     // M2 Supply
-    if (params.usa_active) symbols.push('ECONOMICS:USM2');
+    if (params.usa_active) symbols.push("ECONOMICS:USM2");
     if (params.europe_active) {
-      symbols.push('ECONOMICS:EUM2');
-      exchangeRatesNeeded.add('EURUSD');
+      symbols.push("ECONOMICS:EUM2");
+      exchangeRatesNeeded.add("EURUSD");
     }
     if (params.china_active) {
-      symbols.push('ECONOMICS:CNM2');
-      exchangeRatesNeeded.add('CNYUSD');
+      symbols.push("ECONOMICS:CNM2");
+      exchangeRatesNeeded.add("CNYUSD");
     }
     if (params.japan_active) {
-      symbols.push('ECONOMICS:JPM2');
-      exchangeRatesNeeded.add('JPYUSD');
+      symbols.push("ECONOMICS:JPM2");
+      exchangeRatesNeeded.add("JPYUSD");
     }
 
     // Other M2
     if (params.other_m2_active) {
-      symbols.push('ECONOMICS:GBM2');
-      exchangeRatesNeeded.add('GBPUSD');
-      symbols.push('ECONOMICS:CAM2');
-      exchangeRatesNeeded.add('CADUSD');
-      symbols.push('ECONOMICS:AUM3');
-      exchangeRatesNeeded.add('AUDUSD');
-      symbols.push('ECONOMICS:INM2');
-      exchangeRatesNeeded.add('INRUSD');
-      symbols.push('ECONOMICS:CHM2');
-      exchangeRatesNeeded.add('CHFUSD');
-      symbols.push('ECONOMICS:RUM2');
-      exchangeRatesNeeded.add('RUBUSD');
-      symbols.push('ECONOMICS:BRM2');
-      exchangeRatesNeeded.add('BRLUSD');
-      symbols.push('ECONOMICS:KRM2');
-      exchangeRatesNeeded.add('KRWUSD');
-      symbols.push('ECONOMICS:MXM2');
-      exchangeRatesNeeded.add('MXNUSD');
-      symbols.push('ECONOMICS:IDM2');
-      exchangeRatesNeeded.add('IDRUSD');
-      symbols.push('ECONOMICS:ZAM2');
-      exchangeRatesNeeded.add('ZARUSD');
-      symbols.push('ECONOMICS:MYM2');
-      exchangeRatesNeeded.add('MYRUSD');
-      symbols.push('ECONOMICS:SEM2');
-      exchangeRatesNeeded.add('SEKUSD');
+      symbols.push("ECONOMICS:GBM2");
+      exchangeRatesNeeded.add("GBPUSD");
+      symbols.push("ECONOMICS:CAM2");
+      exchangeRatesNeeded.add("CADUSD");
+      symbols.push("ECONOMICS:AUM3");
+      exchangeRatesNeeded.add("AUDUSD");
+      symbols.push("ECONOMICS:INM2");
+      exchangeRatesNeeded.add("INRUSD");
+      symbols.push("ECONOMICS:CHM2");
+      exchangeRatesNeeded.add("CHFUSD");
+      symbols.push("ECONOMICS:RUM2");
+      exchangeRatesNeeded.add("RUBUSD");
+      symbols.push("ECONOMICS:BRM2");
+      exchangeRatesNeeded.add("BRLUSD");
+      symbols.push("ECONOMICS:KRM2");
+      exchangeRatesNeeded.add("KRWUSD");
+      symbols.push("ECONOMICS:MXM2");
+      exchangeRatesNeeded.add("MXNUSD");
+      symbols.push("ECONOMICS:IDM2");
+      exchangeRatesNeeded.add("IDRUSD");
+      symbols.push("ECONOMICS:ZAM2");
+      exchangeRatesNeeded.add("ZARUSD");
+      symbols.push("ECONOMICS:MYM2");
+      exchangeRatesNeeded.add("MYRUSD");
+      symbols.push("ECONOMICS:SEM2");
+      exchangeRatesNeeded.add("SEKUSD");
     }
 
     // Add needed exchange rates to the symbols list
@@ -192,7 +192,7 @@ export class GliService {
     dataMap: Map<string, any>,
     limit: number = 10,
     from?: number,
-    interval: string = '1D',
+    interval: string = "1D",
   ): any[] {
     // 标准化interval为大写
     const normalizedInterval = interval.toUpperCase();
@@ -200,14 +200,14 @@ export class GliService {
     // 计算时间间隔的毫秒数
     let intervalMs: number;
     switch (normalizedInterval) {
-      case '1W':
+      case "1W":
         intervalMs = 7 * 24 * 60 * 60 * 1000; // 一周的毫秒数
         break;
-      case '1M':
+      case "1M":
         // 月份处理较复杂，我们使用30天作为近似值
         intervalMs = 30 * 24 * 60 * 60 * 1000; // 约一个月的毫秒数
         break;
-      case '1D':
+      case "1D":
       default:
         intervalMs = 24 * 60 * 60 * 1000; // 一天的毫秒数
         break;
@@ -226,16 +226,16 @@ export class GliService {
       const date = new Date(t);
 
       // 根据不同的时间间隔调整日期
-      if (normalizedInterval === '1D') {
+      if (normalizedInterval === "1D") {
         // 对于日线，设置为当天的零点
         date.setHours(0, 0, 0, 0);
-      } else if (normalizedInterval === '1W') {
+      } else if (normalizedInterval === "1W") {
         // 对于周线，设置为该周的第一天（星期一）
         const day = date.getDay();
         const diff = day === 0 ? 6 : day - 1; // 调整为周一（0是周日，1是周一）
         date.setDate(date.getDate() - diff);
         date.setHours(0, 0, 0, 0);
-      } else if (normalizedInterval === '1M') {
+      } else if (normalizedInterval === "1M") {
         // 对于月线，设置为该月的第一天
         date.setDate(1);
         date.setHours(0, 0, 0, 0);
@@ -391,38 +391,38 @@ export class GliService {
       const neededRates = new Set<string>();
 
       // 只有在需要时才添加汇率
-      if (params.ecb_active) neededRates.add('eurusd');
-      if (params.pbc_active) neededRates.add('cnyusd');
-      if (params.boj_active) neededRates.add('jpyusd');
+      if (params.ecb_active) neededRates.add("eurusd");
+      if (params.pbc_active) neededRates.add("cnyusd");
+      if (params.boj_active) neededRates.add("jpyusd");
       if (params.other_active) {
-        neededRates.add('gbpusd');
-        neededRates.add('cadusd');
-        neededRates.add('audusd');
-        neededRates.add('inrusd');
-        neededRates.add('chfusd');
-        neededRates.add('rubusd');
-        neededRates.add('brlusd');
-        neededRates.add('krwusd');
-        neededRates.add('sekusd');
-        neededRates.add('myrusd');
+        neededRates.add("gbpusd");
+        neededRates.add("cadusd");
+        neededRates.add("audusd");
+        neededRates.add("inrusd");
+        neededRates.add("chfusd");
+        neededRates.add("rubusd");
+        neededRates.add("brlusd");
+        neededRates.add("krwusd");
+        neededRates.add("sekusd");
+        neededRates.add("myrusd");
       }
-      if (params.europe_active) neededRates.add('eurusd');
-      if (params.china_active) neededRates.add('cnyusd');
-      if (params.japan_active) neededRates.add('jpyusd');
+      if (params.europe_active) neededRates.add("eurusd");
+      if (params.china_active) neededRates.add("cnyusd");
+      if (params.japan_active) neededRates.add("jpyusd");
       if (params.other_m2_active) {
-        neededRates.add('gbpusd');
-        neededRates.add('cadusd');
-        neededRates.add('audusd');
-        neededRates.add('inrusd');
-        neededRates.add('chfusd');
-        neededRates.add('rubusd');
-        neededRates.add('brlusd');
-        neededRates.add('krwusd');
-        neededRates.add('mxnusd');
-        neededRates.add('idrusd');
-        neededRates.add('zarusd');
-        neededRates.add('myrusd');
-        neededRates.add('sekusd');
+        neededRates.add("gbpusd");
+        neededRates.add("cadusd");
+        neededRates.add("audusd");
+        neededRates.add("inrusd");
+        neededRates.add("chfusd");
+        neededRates.add("rubusd");
+        neededRates.add("brlusd");
+        neededRates.add("krwusd");
+        neededRates.add("mxnusd");
+        neededRates.add("idrusd");
+        neededRates.add("zarusd");
+        neededRates.add("myrusd");
+        neededRates.add("sekusd");
       }
 
       // 添加需要的汇率
@@ -445,24 +445,24 @@ export class GliService {
       this.processSymbolData(
         dataPoint,
         processed,
-        'USCBBS',
-        'fed',
+        "USCBBS",
+        "fed",
         params.fed_active,
         missingDataSymbols,
       );
       this.processSymbolData(
         dataPoint,
         processed,
-        'RRPONTSYD',
-        'rrp',
+        "RRPONTSYD",
+        "rrp",
         params.rrp_active,
         missingDataSymbols,
       );
       this.processSymbolData(
         dataPoint,
         processed,
-        'WTREGEN',
-        'tga',
+        "WTREGEN",
+        "tga",
         params.tga_active,
         missingDataSymbols,
       );
@@ -472,8 +472,8 @@ export class GliService {
         this.processSymbolData(
           dataPoint,
           processed,
-          'EUCBBS',
-          'ecb',
+          "EUCBBS",
+          "ecb",
           true,
           missingDataSymbols,
           processed.eurusd,
@@ -483,8 +483,8 @@ export class GliService {
         this.processSymbolData(
           dataPoint,
           processed,
-          'CNCBBS',
-          'pbc',
+          "CNCBBS",
+          "pbc",
           true,
           missingDataSymbols,
           processed.cnyusd,
@@ -494,8 +494,8 @@ export class GliService {
         this.processSymbolData(
           dataPoint,
           processed,
-          'JPCBBS',
-          'boj',
+          "JPCBBS",
+          "boj",
           true,
           missingDataSymbols,
           processed.jpyusd,
@@ -510,121 +510,121 @@ export class GliService {
         // 英国央行
         const boe = this.getSymbolValueWithRate(
           dataPoint,
-          'GBCBBS',
+          "GBCBBS",
           processed.gbpusd,
           missingDataSymbols,
           processed,
-          'boe',
+          "boe",
         );
         otherCbTotal += boe;
 
         // 加拿大央行
         const boc = this.getSymbolValueWithRate(
           dataPoint,
-          'CACBBS',
+          "CACBBS",
           processed.cadusd,
           missingDataSymbols,
           processed,
-          'boc',
+          "boc",
         );
         otherCbTotal += boc;
 
         // 澳大利亚央行
         const rba = this.getSymbolValueWithRate(
           dataPoint,
-          'AUCBBS',
+          "AUCBBS",
           processed.audusd,
           missingDataSymbols,
           processed,
-          'rba',
+          "rba",
         );
         otherCbTotal += rba;
 
         // 印度央行
         const rbi = this.getSymbolValueWithRate(
           dataPoint,
-          'INCBBS',
+          "INCBBS",
           processed.inrusd,
           missingDataSymbols,
           processed,
-          'rbi',
+          "rbi",
         );
         otherCbTotal += rbi;
 
         // 瑞士央行
         const snb = this.getSymbolValueWithRate(
           dataPoint,
-          'CHCBBS',
+          "CHCBBS",
           processed.chfusd,
           missingDataSymbols,
           processed,
-          'snb',
+          "snb",
         );
         otherCbTotal += snb;
 
         // 俄罗斯央行
         const cbr = this.getSymbolValueWithRate(
           dataPoint,
-          'RUCBBS',
+          "RUCBBS",
           processed.rubusd,
           missingDataSymbols,
           processed,
-          'cbr',
+          "cbr",
         );
         otherCbTotal += cbr;
 
         // 巴西央行
         const bcb = this.getSymbolValueWithRate(
           dataPoint,
-          'BRCBBS',
+          "BRCBBS",
           processed.brlusd,
           missingDataSymbols,
           processed,
-          'bcb',
+          "bcb",
         );
         otherCbTotal += bcb;
 
         // 韩国央行
         const bok = this.getSymbolValueWithRate(
           dataPoint,
-          'KRCBBS',
+          "KRCBBS",
           processed.krwusd,
           missingDataSymbols,
           processed,
-          'bok',
+          "bok",
         );
         otherCbTotal += bok;
 
         // 新西兰央行
         const rbzn = this.getSymbolValueWithRate(
           dataPoint,
-          'NZCBBS',
+          "NZCBBS",
           processed.audusd,
           missingDataSymbols,
           processed,
-          'rbzn',
+          "rbzn",
         );
         otherCbTotal += rbzn;
 
         // 瑞典央行
         const sr = this.getSymbolValueWithRate(
           dataPoint,
-          'SECBBS',
+          "SECBBS",
           processed.sekusd,
           missingDataSymbols,
           processed,
-          'sr',
+          "sr",
         );
         otherCbTotal += sr;
 
         // 马来西亚央行
         const bnm = this.getSymbolValueWithRate(
           dataPoint,
-          'MYCBBS',
+          "MYCBBS",
           processed.myrusd,
           missingDataSymbols,
           processed,
-          'bnm',
+          "bnm",
         );
         otherCbTotal += bnm;
 
@@ -635,8 +635,8 @@ export class GliService {
       this.processSymbolData(
         dataPoint,
         processed,
-        'ECONOMICS:USM2',
-        'usa',
+        "ECONOMICS:USM2",
+        "usa",
         params.usa_active,
         missingDataSymbols,
       );
@@ -645,8 +645,8 @@ export class GliService {
         this.processSymbolData(
           dataPoint,
           processed,
-          'ECONOMICS:EUM2',
-          'eu',
+          "ECONOMICS:EUM2",
+          "eu",
           true,
           missingDataSymbols,
           processed.eurusd,
@@ -657,8 +657,8 @@ export class GliService {
         this.processSymbolData(
           dataPoint,
           processed,
-          'ECONOMICS:CNM2',
-          'china',
+          "ECONOMICS:CNM2",
+          "china",
           true,
           missingDataSymbols,
           processed.cnyusd,
@@ -669,8 +669,8 @@ export class GliService {
         this.processSymbolData(
           dataPoint,
           processed,
-          'ECONOMICS:JPM2',
-          'japan',
+          "ECONOMICS:JPM2",
+          "japan",
           true,
           missingDataSymbols,
           processed.jpyusd,
@@ -685,131 +685,131 @@ export class GliService {
         // 英国M2
         otherM2Total += this.getSymbolValueWithRate(
           dataPoint,
-          'ECONOMICS:GBM2',
+          "ECONOMICS:GBM2",
           processed.gbpusd,
           missingDataSymbols,
           processed,
-          'gbm2',
+          "gbm2",
         );
 
         // 加拿大M2
         otherM2Total += this.getSymbolValueWithRate(
           dataPoint,
-          'ECONOMICS:CAM2',
+          "ECONOMICS:CAM2",
           processed.cadusd,
           missingDataSymbols,
           processed,
-          'cam2',
+          "cam2",
         );
 
         // 澳大利亚M3
         otherM2Total += this.getSymbolValueWithRate(
           dataPoint,
-          'ECONOMICS:AUM3',
+          "ECONOMICS:AUM3",
           processed.audusd,
           missingDataSymbols,
           processed,
-          'aum3',
+          "aum3",
         );
 
         // 印度M2
         otherM2Total += this.getSymbolValueWithRate(
           dataPoint,
-          'ECONOMICS:INM2',
+          "ECONOMICS:INM2",
           processed.inrusd,
           missingDataSymbols,
           processed,
-          'inm2',
+          "inm2",
         );
 
         // 瑞士M2
         otherM2Total += this.getSymbolValueWithRate(
           dataPoint,
-          'ECONOMICS:CHM2',
+          "ECONOMICS:CHM2",
           processed.chfusd,
           missingDataSymbols,
           processed,
-          'chm2',
+          "chm2",
         );
 
         // 俄罗斯M2
         otherM2Total += this.getSymbolValueWithRate(
           dataPoint,
-          'ECONOMICS:RUM2',
+          "ECONOMICS:RUM2",
           processed.rubusd,
           missingDataSymbols,
           processed,
-          'rum2',
+          "rum2",
         );
 
         // 巴西M2
         otherM2Total += this.getSymbolValueWithRate(
           dataPoint,
-          'ECONOMICS:BRM2',
+          "ECONOMICS:BRM2",
           processed.brlusd,
           missingDataSymbols,
           processed,
-          'brm2',
+          "brm2",
         );
 
         // 韩国M2
         otherM2Total += this.getSymbolValueWithRate(
           dataPoint,
-          'ECONOMICS:KRM2',
+          "ECONOMICS:KRM2",
           processed.krwusd,
           missingDataSymbols,
           processed,
-          'krm2',
+          "krm2",
         );
 
         // 墨西哥M2
         otherM2Total += this.getSymbolValueWithRate(
           dataPoint,
-          'ECONOMICS:MXM2',
+          "ECONOMICS:MXM2",
           processed.mxnusd,
           missingDataSymbols,
           processed,
-          'mxm2',
+          "mxm2",
         );
 
         // 印尼M2
         otherM2Total += this.getSymbolValueWithRate(
           dataPoint,
-          'ECONOMICS:IDM2',
+          "ECONOMICS:IDM2",
           processed.idrusd,
           missingDataSymbols,
           processed,
-          'idm2',
+          "idm2",
         );
 
         // 南非M2
         otherM2Total += this.getSymbolValueWithRate(
           dataPoint,
-          'ECONOMICS:ZAM2',
+          "ECONOMICS:ZAM2",
           processed.zarusd,
           missingDataSymbols,
           processed,
-          'zam2',
+          "zam2",
         );
 
         // 马来西亚M2
         otherM2Total += this.getSymbolValueWithRate(
           dataPoint,
-          'ECONOMICS:MYM2',
+          "ECONOMICS:MYM2",
           processed.myrusd,
           missingDataSymbols,
           processed,
-          'mym2',
+          "mym2",
         );
 
         // 瑞典M2
         otherM2Total += this.getSymbolValueWithRate(
           dataPoint,
-          'ECONOMICS:SEM2',
+          "ECONOMICS:SEM2",
           processed.sekusd,
           missingDataSymbols,
           processed,
-          'sem2',
+          "sem2",
         );
 
         processed.other_m2_total = otherM2Total;
@@ -850,53 +850,53 @@ export class GliService {
 
   // GLI趋势时段数据
   public readonly centralBankTrendPeriods: GliTrendPeriod[] = [
-    { startDate: '2024-12-31', endDate: '2025-05-26', trend: 'up' },
-    { startDate: '2024-09-17', endDate: '2024-12-31', trend: 'down' },
-    { startDate: '2024-07-01', endDate: '2024-09-17', trend: 'up' },
-    { startDate: '2024-01-02', endDate: '2024-07-01', trend: 'down' },
-    { startDate: '2023-10-02', endDate: '2024-01-02', trend: 'up' },
-    { startDate: '2023-04-04', endDate: '2023-10-02', trend: 'down' },
-    { startDate: '2022-11-04', endDate: '2023-02-01', trend: 'up' },
-    { startDate: '2022-03-01', endDate: '2022-09-28', trend: 'down' },
-    { startDate: '2020-02-21', endDate: '2021-09-16', trend: 'up' },
-    { startDate: '2018-03-06', endDate: '2018-11-12', trend: 'down' },
-    { startDate: '2016-12-30', endDate: '2018-03-06', trend: 'up' },
-    { startDate: '2016-09-08', endDate: '2016-12-30', trend: 'down' },
-    { startDate: '2016-01-29', endDate: '2016-09-08', trend: 'up' },
-    { startDate: '2013-07-10', endDate: '2014-06-16', trend: 'up' },
-    { startDate: '2009-03-10', endDate: '2013-01-29', trend: 'up' },
-    { startDate: '2008-12-31', endDate: '2009-03-10', trend: 'down' },
-    { startDate: '2008-09-11', endDate: '2008-12-31', trend: 'up' },
-    { startDate: '2008-08-01', endDate: '2008-09-11', trend: 'down' },
-    { startDate: '2007-06-15', endDate: '2008-08-01', trend: 'up' },
-    { startDate: '2002-12-24', endDate: '2004-12-03', trend: 'up' },
+    { startDate: "2024-12-31", endDate: "2025-05-26", trend: "up" },
+    { startDate: "2024-09-17", endDate: "2024-12-31", trend: "down" },
+    { startDate: "2024-07-01", endDate: "2024-09-17", trend: "up" },
+    { startDate: "2024-01-02", endDate: "2024-07-01", trend: "down" },
+    { startDate: "2023-10-02", endDate: "2024-01-02", trend: "up" },
+    { startDate: "2023-04-04", endDate: "2023-10-02", trend: "down" },
+    { startDate: "2022-11-04", endDate: "2023-02-01", trend: "up" },
+    { startDate: "2022-03-01", endDate: "2022-09-28", trend: "down" },
+    { startDate: "2020-02-21", endDate: "2021-09-16", trend: "up" },
+    { startDate: "2018-03-06", endDate: "2018-11-12", trend: "down" },
+    { startDate: "2016-12-30", endDate: "2018-03-06", trend: "up" },
+    { startDate: "2016-09-08", endDate: "2016-12-30", trend: "down" },
+    { startDate: "2016-01-29", endDate: "2016-09-08", trend: "up" },
+    { startDate: "2013-07-10", endDate: "2014-06-16", trend: "up" },
+    { startDate: "2009-03-10", endDate: "2013-01-29", trend: "up" },
+    { startDate: "2008-12-31", endDate: "2009-03-10", trend: "down" },
+    { startDate: "2008-09-11", endDate: "2008-12-31", trend: "up" },
+    { startDate: "2008-08-01", endDate: "2008-09-11", trend: "down" },
+    { startDate: "2007-06-15", endDate: "2008-08-01", trend: "up" },
+    { startDate: "2002-12-24", endDate: "2004-12-03", trend: "up" },
   ];
 
   public readonly m2TrendPeriods: GliTrendPeriod[] = [
-    { startDate: '2025-01-13', endDate: '2025-05-26', trend: 'up' },
-    { startDate: '2024-10-01', endDate: '2025-01-13', trend: 'down' },
-    { startDate: '2023-11-01', endDate: '2024-10-01', trend: 'up' },
-    { startDate: '2022-11-04', endDate: '2023-02-02', trend: 'up' },
-    { startDate: '2022-04-01', endDate: '2022-11-04', trend: 'down' },
-    { startDate: '2020-03-20', endDate: '2022-03-01', trend: 'up' },
-    { startDate: '2018-11-12', endDate: '2020-02-20', trend: 'up' },
-    { startDate: '2018-04-12', endDate: '2018-11-12', trend: 'down' },
-    { startDate: '2016-12-16', endDate: '2018-04-12', trend: 'up' },
-    { startDate: '2016-10-04', endDate: '2016-12-16', trend: 'down' },
-    { startDate: '2015-03-16', endDate: '2016-10-04', trend: 'up' },
-    { startDate: '2014-07-02', endDate: '2015-03-16', trend: 'down' },
-    { startDate: '2010-06-07', endDate: '2014-07-02', trend: 'up' },
-    { startDate: '2009-12-01', endDate: '2010-06-07', trend: 'down' },
-    { startDate: '2009-02-27', endDate: '2009-12-01', trend: 'up' },
-    { startDate: '2008-12-18', endDate: '2009-02-27', trend: 'down' },
-    { startDate: '2008-10-29', endDate: '2008-12-18', trend: 'up' },
-    { startDate: '2008-07-16', endDate: '2008-10-29', trend: 'down' },
-    { startDate: '2007-06-28', endDate: '2008-07-16', trend: 'up' },
-    { startDate: '2005-12-06', endDate: '2007-04-30', trend: 'up' },
-    { startDate: '2004-12-30', endDate: '2005-12-06', trend: 'down' },
-    { startDate: '2002-10-21', endDate: '2004-02-12', trend: 'up' },
-    { startDate: '2002-03-26', endDate: '2002-07-17', trend: 'up' },
-    { startDate: '2001-09-20', endDate: '2002-01-26', trend: 'down' },
+    { startDate: "2025-01-13", endDate: "2025-05-26", trend: "up" },
+    { startDate: "2024-10-01", endDate: "2025-01-13", trend: "down" },
+    { startDate: "2023-11-01", endDate: "2024-10-01", trend: "up" },
+    { startDate: "2022-11-04", endDate: "2023-02-02", trend: "up" },
+    { startDate: "2022-04-01", endDate: "2022-11-04", trend: "down" },
+    { startDate: "2020-03-20", endDate: "2022-03-01", trend: "up" },
+    { startDate: "2018-11-12", endDate: "2020-02-20", trend: "up" },
+    { startDate: "2018-04-12", endDate: "2018-11-12", trend: "down" },
+    { startDate: "2016-12-16", endDate: "2018-04-12", trend: "up" },
+    { startDate: "2016-10-04", endDate: "2016-12-16", trend: "down" },
+    { startDate: "2015-03-16", endDate: "2016-10-04", trend: "up" },
+    { startDate: "2014-07-02", endDate: "2015-03-16", trend: "down" },
+    { startDate: "2010-06-07", endDate: "2014-07-02", trend: "up" },
+    { startDate: "2009-12-01", endDate: "2010-06-07", trend: "down" },
+    { startDate: "2009-02-27", endDate: "2009-12-01", trend: "up" },
+    { startDate: "2008-12-18", endDate: "2009-02-27", trend: "down" },
+    { startDate: "2008-10-29", endDate: "2008-12-18", trend: "up" },
+    { startDate: "2008-07-16", endDate: "2008-10-29", trend: "down" },
+    { startDate: "2007-06-28", endDate: "2008-07-16", trend: "up" },
+    { startDate: "2005-12-06", endDate: "2007-04-30", trend: "up" },
+    { startDate: "2004-12-30", endDate: "2005-12-06", trend: "down" },
+    { startDate: "2002-10-21", endDate: "2004-02-12", trend: "up" },
+    { startDate: "2002-03-26", endDate: "2002-07-17", trend: "up" },
+    { startDate: "2001-09-20", endDate: "2002-01-26", trend: "down" },
   ];
 
   // 获取GLI趋势时段
@@ -905,7 +905,7 @@ export class GliService {
       // 使用传入的参数，但强制使用日线K线数据并确保获取到所有趋势时段的数据
       const apiParams: GliParamsDto = {
         // 强制使用日线数据，忽略传入的interval
-        interval: '1D',
+        interval: "1D",
         // 保证能获取到覆盖所有趋势时段的数据
         limit: 10000,
         // 保留其他参数
@@ -930,7 +930,7 @@ export class GliService {
         !gliResponse.data ||
         gliResponse.data.length === 0
       ) {
-        console.warn('无法获取GLI数据来计算趋势时段的百分比变化');
+        console.warn("无法获取GLI数据来计算趋势时段的百分比变化");
         return {
           success: true,
           data: {
@@ -1078,7 +1078,7 @@ export class GliService {
         timestamp: new Date().toISOString(),
       };
     } catch (error) {
-      console.error('计算趋势时段的百分比变化时出错:', error);
+      console.error("计算趋势时段的百分比变化时出错:", error);
       // 出错时返回原始数据
       return {
         success: true,

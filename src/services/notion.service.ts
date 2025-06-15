@@ -1,8 +1,8 @@
-import { Injectable } from '@nestjs/common';
-import { ConfigService } from '../config';
-import { Client } from '@notionhq/client';
+import { Injectable } from "@nestjs/common";
+import { ConfigService } from "../config";
+import { Client } from "@notionhq/client";
 
-type SortDirection = 'ascending' | 'descending';
+type SortDirection = "ascending" | "descending";
 
 @Injectable()
 export class NotionService {
@@ -10,7 +10,7 @@ export class NotionService {
 
   constructor(protected readonly configService: ConfigService) {
     this.notionClient = new Client({
-      auth: this.configService.get<string>('notion.api_key'),
+      auth: this.configService.get<string>("notion.api_key"),
     });
   }
 
@@ -25,7 +25,7 @@ export class NotionService {
   async getDatabaseById(
     databaseId: string,
     sortField?: string,
-    direction: SortDirection = 'ascending',
+    direction: SortDirection = "ascending",
     filter?: any,
   ): Promise<any> {
     try {
@@ -53,7 +53,7 @@ export class NotionService {
       const response = await this.notionClient.databases.query(queryParams);
       return this.processNotionData(response.results);
     } catch (error) {
-      console.error('Error fetching Notion database by ID:', error);
+      console.error("Error fetching Notion database by ID:", error);
       throw new Error(`Failed to fetch Notion database: ${error.message}`);
     }
   }
@@ -71,7 +71,7 @@ export class NotionService {
     user: string,
     databaseType: string,
     sortField?: string,
-    direction: SortDirection = 'ascending',
+    direction: SortDirection = "ascending",
     filter?: any,
   ): Promise<any> {
     try {
@@ -88,7 +88,7 @@ export class NotionService {
 
       return this.getDatabaseById(databaseId, sortField, direction, filter);
     } catch (error) {
-      console.error('Error in getDatabaseData:', error);
+      console.error("Error in getDatabaseData:", error);
       throw error;
     }
   }
@@ -110,29 +110,29 @@ export class NotionService {
 
         // Extract value based on property type
         switch (property.type) {
-          case 'title':
+          case "title":
             processedItem[key] = property.title
               .map((t) => t.plain_text)
-              .join('');
+              .join("");
             break;
-          case 'rich_text':
+          case "rich_text":
             processedItem[key] = property.rich_text
               .map((t) => t.plain_text)
-              .join('');
+              .join("");
             break;
-          case 'number':
+          case "number":
             processedItem[key] = property.number;
             break;
-          case 'select':
+          case "select":
             processedItem[key] = property.select?.name;
             break;
-          case 'multi_select':
+          case "multi_select":
             processedItem[key] = property.multi_select.map((s) => s.name);
             break;
-          case 'date':
+          case "date":
             processedItem[key] = property.date?.start;
             break;
-          case 'checkbox':
+          case "checkbox":
             processedItem[key] = property.checkbox;
             break;
           default:

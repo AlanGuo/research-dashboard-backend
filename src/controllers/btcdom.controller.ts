@@ -1,9 +1,9 @@
-import { Controller, Get, Query } from '@nestjs/common';
-import { BtcDomService } from '../services/btcdom.service';
+import { Controller, Get, Query } from "@nestjs/common";
+import { BtcDomService } from "../services/btcdom.service";
 
-type SortDirection = 'ascending' | 'descending';
+type SortDirection = "ascending" | "descending";
 
-@Controller('v1/btcdom')
+@Controller("v1/btcdom")
 export class BtcDomController {
   constructor(private readonly btcDomService: BtcDomService) {}
 
@@ -15,8 +15,8 @@ export class BtcDomController {
    */
   @Get()
   async getBtcDomData(
-    @Query('sortField') sortField?: string,
-    @Query('direction') direction: SortDirection = 'ascending',
+    @Query("sortField") sortField?: string,
+    @Query("direction") direction: SortDirection = "ascending",
   ) {
     try {
       const data = await this.btcDomService.getBtcDomData(sortField, direction);
@@ -27,7 +27,7 @@ export class BtcDomController {
     } catch (error) {
       return {
         success: false,
-        message: error.message || 'Failed to fetch BTC Dominance data',
+        message: error.message || "Failed to fetch BTC Dominance data",
       };
     }
   }

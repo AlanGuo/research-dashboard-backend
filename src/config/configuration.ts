@@ -1,30 +1,30 @@
-import { readFileSync } from 'fs';
-import { join, resolve } from 'path';
+import { readFileSync } from "fs";
+import { join, resolve } from "path";
 
-const ENVIRONMENT = process.env.NODE_ENV || 'development';
+const ENVIRONMENT = process.env.NODE_ENV || "development";
 
 export default () => {
   try {
     // Try multiple possible paths to find the config file
     const possiblePaths = [
       // Path for production (compiled)
-      join(__dirname, 'environments', `${ENVIRONMENT}.json`),
+      join(__dirname, "environments", `${ENVIRONMENT}.json`),
       // Path for development
-      join(__dirname, '..', 'config', 'environments', `${ENVIRONMENT}.json`),
+      join(__dirname, "..", "config", "environments", `${ENVIRONMENT}.json`),
       // Absolute path from project root
       resolve(
         process.cwd(),
-        'src',
-        'config',
-        'environments',
+        "src",
+        "config",
+        "environments",
         `${ENVIRONMENT}.json`,
       ),
       // Path for when running from dist
       resolve(
         process.cwd(),
-        'dist',
-        'config',
-        'environments',
+        "dist",
+        "config",
+        "environments",
         `${ENVIRONMENT}.json`,
       ),
     ];
@@ -35,7 +35,7 @@ export default () => {
     // Try each path until we find one that works
     for (const path of possiblePaths) {
       try {
-        configFile = readFileSync(path, 'utf8');
+        configFile = readFileSync(path, "utf8");
         usedPath = path;
         break;
       } catch (e) {
@@ -45,7 +45,7 @@ export default () => {
 
     if (!configFile) {
       throw new Error(
-        `Could not find config file for environment ${ENVIRONMENT}. Tried paths: ${possiblePaths.join(', ')}`,
+        `Could not find config file for environment ${ENVIRONMENT}. Tried paths: ${possiblePaths.join(", ")}`,
       );
     }
 

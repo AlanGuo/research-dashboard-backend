@@ -1,22 +1,22 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
-import { createHash } from 'crypto';
+import { Injectable, Logger } from "@nestjs/common";
+import { InjectModel } from "@nestjs/mongoose";
+import { Model } from "mongoose";
+import { createHash } from "crypto";
 import {
   VolumeBacktest,
   VolumeBacktestDocument,
   HourlyVolumeRankingItem,
-} from '../models/volume-backtest.model';
+} from "../models/volume-backtest.model";
 import {
   SymbolFilterCache,
   SymbolFilterCacheDocument,
-} from '../models/symbol-filter-cache.model';
+} from "../models/symbol-filter-cache.model";
 import {
   VolumeBacktestParamsDto,
   VolumeBacktestResponse,
-} from '../dto/volume-backtest-params.dto';
-import { ConfigService } from '../config/config.service';
-import { BinanceService } from './binance.service';
+} from "../dto/volume-backtest-params.dto";
+import { ConfigService } from "../config/config.service";
+import { BinanceService } from "./binance.service";
 
 interface KlineData {
   openTime: number;
@@ -45,30 +45,30 @@ export class BinanceVolumeBacktestService {
 
   // 常见稳定币列表（基础资产）
   private readonly STABLECOINS = [
-    'USDT',
-    'USDC',
-    'BUSD',
-    'DAI',
-    'TUSD',
-    'USDP',
-    'USDD',
-    'FRAX',
-    'FDUSD',
-    'PYUSD',
-    'LUSD',
-    'GUSD',
-    'SUSD',
-    'HUSD',
-    'OUSD',
-    'USDK',
-    'USDN',
-    'UST',
-    'USTC',
-    'CUSD',
-    'DOLA',
-    'USDX',
-    'RSR',
-    'TRIBE',
+    "USDT",
+    "USDC",
+    "BUSD",
+    "DAI",
+    "TUSD",
+    "USDP",
+    "USDD",
+    "FRAX",
+    "FDUSD",
+    "PYUSD",
+    "LUSD",
+    "GUSD",
+    "SUSD",
+    "HUSD",
+    "OUSD",
+    "USDK",
+    "USDN",
+    "UST",
+    "USTC",
+    "CUSD",
+    "DOLA",
+    "USDX",
+    "RSR",
+    "TRIBE",
   ];
 
   constructor(
@@ -101,7 +101,7 @@ export class BinanceVolumeBacktestService {
         endTime,
       );
       this.logger.log(
-        `📅 回测期间涉及 ${weeklyCalculationTimes.length} 个周一时间点: ${weeklyCalculationTimes.map((t) => t.toISOString().slice(0, 10)).join(', ')}`,
+        `📅 回测期间涉及 ${weeklyCalculationTimes.length} 个周一时间点`,
       );
 
       // 2. 获取活跃交易对列表（用于所有周的计算）
@@ -124,32 +124,34 @@ export class BinanceVolumeBacktestService {
 
       for (const weekStart of weeklyCalculationTimes) {
         // 生成该周的筛选条件哈希
-        const weeklyFilterHash = this.generateWeeklyFilterHash(
-          weekStart,
-          params,
-        );
+        const weeklyFilterHash = this.generateFilterHash(weekStart, params);
         this.logger.log(
-          `🔑 周一 ${weekStart.toISOString().slice(0, 10)} 筛选条件哈希: ${weeklyFilterHash.slice(0, 16)}...`,
+          `🔑 周一 ${weekStart.toISOString().slice(0, 10)} 筛选条件哈希: ${weeklyFilterHash.slice(0, 8)}...`,
         );
 
         let symbolFilter = await this.getFilterFromCache(weeklyFilterHash);
 
         if (!symbolFilter) {
-          // 缓存未命中，执行实际筛选
+          // 缓存未命中，使用并发筛选
           this.logger.log(
-            `💾 周一 ${weekStart.toISOString().slice(0, 10)} 缓存未命中，开始执行交易对筛选...`,
+            `💾 周一 ${weekStart.toISOString().slice(0, 10)} 缓存未命中，启动并发筛选 (${params.concurrency || 5} 并发)...`,
           );
-          const filterStartTime = Date.now();
-
-          symbolFilter = await this.filterValidSymbols(
+          const concurrentResult = await this.filterSymbolsConcurrently(
             allActiveSymbols,
-            weekStart,
-            params.minHistoryDays || 365,
-            params.requireFutures || false,
-            params.excludeStablecoins ?? true,
+            {
+              minHistoryDays: params.minHistoryDays || 365,
+              requireFutures: params.requireFutures || false,
+              excludeStablecoins: params.excludeStablecoins ?? true,
+              concurrency: params.concurrency || 5,
+              referenceTime: weekStart,
+            },
           );
 
-          const filterProcessingTime = Date.now() - filterStartTime;
+          symbolFilter = {
+            valid: concurrentResult.valid,
+            invalid: concurrentResult.invalid,
+            invalidReasons: concurrentResult.invalidReasons,
+          };
 
           // 保存到缓存
           await this.saveFilterToCache(
@@ -158,11 +160,11 @@ export class BinanceVolumeBacktestService {
             params,
             symbolFilter,
             allActiveSymbols,
-            filterProcessingTime,
+            concurrentResult.stats.processingTime,
           );
         } else {
           this.logger.log(
-            `✅ 周一 ${weekStart.toISOString().slice(0, 10)} 使用缓存数据: ${symbolFilter.valid.length} 个有效交易对`,
+            `✅ 周一 ${weekStart.toISOString().slice(0, 10)} 使用缓存: ${symbolFilter.valid.length} 个有效交易对`,
           );
         }
 
@@ -177,22 +179,21 @@ export class BinanceVolumeBacktestService {
           weekStart: weekKey,
           validSymbols: symbolFilter.valid.length,
           invalidSymbols: symbolFilter.invalid.length,
-          validRate:
-            (
-              (symbolFilter.valid.length / allActiveSymbols.length) *
-              100
-            ).toFixed(1) + '%',
-          sampleSymbols: symbolFilter.valid.slice(0, 10),
+          validRate: `${(
+            (symbolFilter.valid.length / allActiveSymbols.length) *
+            100
+          ).toFixed(1)}%`,
+          sampleSymbols: symbolFilter.valid.slice(0, 5), // 减少样例数量
         });
       }
 
       // 4. 检查是否有任何符合条件的交易对
       if (totalValidSymbols === 0) {
-        throw new Error('没有找到符合条件的交易对，请检查时间范围和参数设置');
+        throw new Error("没有找到符合条件的交易对，请检查时间范围和参数设置");
       }
 
       this.logger.log(
-        `✅ 所有周筛选完成: 平均每周 ${Math.round(totalValidSymbols / weeklyCalculationTimes.length)} 个交易对符合条件`,
+        `✅ 所有周筛选完成: 平均 ${Math.round(totalValidSymbols / weeklyCalculationTimes.length)} 个交易对/周`,
       );
 
       // 5. 计算需要处理的小时数
@@ -200,7 +201,7 @@ export class BinanceVolumeBacktestService {
         (endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60),
       );
       this.logger.log(
-        `📊 将处理 ${totalHours} 小时数据，使用周期性计算的交易对列表`,
+        `📊 开始处理 ${totalHours} 小时数据，使用并发筛选的交易对列表`,
       );
 
       // 6. 执行回测计算（使用周期性symbols）
@@ -212,7 +213,9 @@ export class BinanceVolumeBacktestService {
       );
 
       const processingTime = Date.now() - startExecution;
-      this.logger.log(`回测完成，耗时: ${processingTime}ms`);
+      this.logger.log(
+        `🎉 回测完成! 总耗时: ${processingTime}ms (${(processingTime / 1000).toFixed(1)}s)`,
+      );
 
       // 查询并返回保存的结果
       const results = await this.getBacktestResults(startTime, endTime);
@@ -227,7 +230,7 @@ export class BinanceVolumeBacktestService {
       symbolStats.validRate =
         ((symbolStats.validSymbols / allActiveSymbols.length) * 100).toFixed(
           1,
-        ) + '%';
+        ) + "%";
 
       return {
         success: true,
@@ -256,7 +259,7 @@ export class BinanceVolumeBacktestService {
         },
       };
     } catch (error) {
-      this.logger.error('回测执行失败:', error);
+      this.logger.error("回测执行失败:", error);
       throw error;
     }
   }
@@ -272,12 +275,12 @@ export class BinanceVolumeBacktestService {
       const symbols = exchangeInfo.symbols
         .filter(
           (symbol) =>
-            symbol.status === 'TRADING' &&
-            symbol.quoteAsset === (params.quoteAsset || 'USDT') &&
-            !symbol.symbol.includes('UP') &&
-            !symbol.symbol.includes('DOWN') &&
-            !symbol.symbol.includes('BULL') &&
-            !symbol.symbol.includes('BEAR'),
+            symbol.status === "TRADING" &&
+            symbol.quoteAsset === (params.quoteAsset || "USDT") &&
+            !symbol.symbol.includes("UP") &&
+            !symbol.symbol.includes("DOWN") &&
+            !symbol.symbol.includes("BULL") &&
+            !symbol.symbol.includes("BEAR"),
         )
         .map((symbol) => symbol.symbol);
 
@@ -288,7 +291,7 @@ export class BinanceVolumeBacktestService {
 
       return symbols;
     } catch (error) {
-      this.logger.error('获取交易对信息失败:', error);
+      this.logger.error("获取交易对信息失败:", error);
       throw error;
     }
   }
@@ -304,6 +307,13 @@ export class BinanceVolumeBacktestService {
   ): Promise<void> {
     const volumeWindows = new Map<string, VolumeWindow>();
     let totalSaved = 0;
+    const performanceMetrics = {
+      periodTimes: [] as number[],
+      dataLoadTimes: [] as number[],
+      calculationTimes: [] as number[],
+      saveTimes: [] as number[],
+      totalStartTime: Date.now(),
+    };
 
     // 设置回测粒度（可配置，默认8小时）
     const BACKTEST_GRANULARITY_HOURS = params.granularityHours || 8;
@@ -314,25 +324,37 @@ export class BinanceVolumeBacktestService {
     );
     const totalPeriods = Math.ceil(totalHours / BACKTEST_GRANULARITY_HOURS);
     this.logger.log(
-      `📊 开始回测，总共需要处理 ${totalHours} 小时的数据，按每${BACKTEST_GRANULARITY_HOURS}小时粒度计算，共${totalPeriods}个周期`,
+      `📊 开始优化回测，总共 ${totalHours} 小时，按每${BACKTEST_GRANULARITY_HOURS}小时粒度计算，共${totalPeriods}个周期`,
+    );
+    this.logger.log(
+      `   交易对数量: ${symbols.length}, 预估API调用: ~${totalPeriods * Math.ceil(symbols.length / 10)}`,
     );
 
-    // 初始化滑动窗口
-    for (const symbol of symbols) {
-      volumeWindows.set(symbol, {
-        symbol,
-        data: [],
-        volume24h: 0,
-        quoteVolume24h: 0,
-      });
-    }
+    // 初始化滑动窗口（并发优化）
+    const initStartTime = Date.now();
+    await Promise.all(
+      symbols.map(async (symbol) => {
+        volumeWindows.set(symbol, {
+          symbol,
+          data: [],
+          volume24h: 0,
+          quoteVolume24h: 0,
+        });
+      }),
+    );
+    this.logger.log(`⚡ 窗口初始化完成: ${Date.now() - initStartTime}ms`);
 
-    // 预加载前24小时的数据作为初始窗口（使用带重试机制的方法）
+    // 预加载前24小时的数据作为初始窗口（使用优化方法）
     const preLoadStart = new Date(startTime.getTime() - 24 * 60 * 60 * 1000);
+    const preloadStartTime = Date.now();
     await this.preloadVolumeWindowsWithRetry(
       volumeWindows,
       preLoadStart,
       startTime,
+    );
+    const preloadTime = Date.now() - preloadStartTime;
+    this.logger.log(
+      `⚡ 预加载完成: ${preloadTime}ms (${(preloadTime / 1000).toFixed(1)}s)`,
     );
 
     // 按指定粒度处理数据
@@ -340,42 +362,42 @@ export class BinanceVolumeBacktestService {
     let processedPeriods = 0;
 
     while (currentTime < endTime) {
-      const periodStart = Date.now();
+      const periodStartTime = Date.now();
       processedPeriods++;
 
-      // 显示当前周期进度
+      // 显示增强的进度信息
       const progress = ((processedPeriods / totalPeriods) * 100).toFixed(1);
+      const eta = this.calculateETA(
+        performanceMetrics.periodTimes,
+        totalPeriods - processedPeriods,
+      );
       this.logger.log(
-        `⏳ 处理进度: ${processedPeriods}/${totalPeriods} (${progress}%) - 时间点: ${currentTime.toISOString()} (每${BACKTEST_GRANULARITY_HOURS}小时周期)`,
+        `⏳ 进度: ${processedPeriods}/${totalPeriods} (${progress}%) | ${currentTime.toISOString().slice(0, 16)} | ETA: ${eta}`,
       );
 
-      // 更新滑动窗口（加载当前时间点前N小时的所有数据）
+      // 数据加载阶段
+      const dataLoadStart = Date.now();
       await this.updateVolumeWindowsForPeriod(
         volumeWindows,
         currentTime,
         BACKTEST_GRANULARITY_HOURS,
       );
+      const dataLoadTime = Date.now() - dataLoadStart;
+      performanceMetrics.dataLoadTimes.push(dataLoadTime);
 
-      // 根据周期数调整统计频率
-      const logFrequency = Math.max(1, Math.floor(totalPeriods / 10));
-      if (processedPeriods % logFrequency === 0) {
-        this.logDataStatistics(
-          volumeWindows,
-          `第${processedPeriods}个${BACKTEST_GRANULARITY_HOURS}小时周期后`,
-        );
-      }
-
-      // 计算排行榜
+      // 计算阶段
+      const calcStart = Date.now();
       const rankings = this.calculateRankings(
         volumeWindows,
         params.limit || 50,
         params.minVolumeThreshold || 10000,
       );
-
-      // 计算市场统计
       const marketStats = this.calculateMarketStats(rankings);
+      const calcTime = Date.now() - calcStart;
+      performanceMetrics.calculationTimes.push(calcTime);
 
-      // 创建单个周期的结果
+      // 保存阶段
+      const saveStart = Date.now();
       const periodResult: VolumeBacktest = {
         timestamp: new Date(currentTime),
         hour: currentTime.getHours(),
@@ -384,33 +406,126 @@ export class BinanceVolumeBacktestService {
         totalMarketQuoteVolume: marketStats.totalQuoteVolume,
         activePairs: marketStats.activePairs,
         createdAt: new Date(),
-        calculationDuration: Date.now() - periodStart,
+        calculationDuration: Date.now() - periodStartTime,
       };
 
-      // 立即保存单个周期的结果
       try {
         await this.saveSingleBacktestResult(periodResult);
         totalSaved++;
-        this.logger.debug(`💾 已保存第${processedPeriods}个周期的数据到数据库`);
+        const saveTime = Date.now() - saveStart;
+        performanceMetrics.saveTimes.push(saveTime);
       } catch (error) {
         this.logger.error(`❌ 保存第${processedPeriods}个周期数据失败:`, error);
-        // 继续处理下一个周期，不中断整个回测
+      }
+
+      const periodTime = Date.now() - periodStartTime;
+      performanceMetrics.periodTimes.push(periodTime);
+
+      // 性能监控和日志
+      if (processedPeriods % Math.max(1, Math.floor(totalPeriods / 8)) === 0) {
+        this.logPerformanceMetrics(performanceMetrics, processedPeriods);
+        this.logDataStatistics(
+          volumeWindows,
+          `第${processedPeriods}个${BACKTEST_GRANULARITY_HOURS}小时周期后`,
+        );
       }
 
       // 移动到下一个周期
       currentTime.setHours(currentTime.getHours() + BACKTEST_GRANULARITY_HOURS);
     }
 
+    const totalTime = Date.now() - performanceMetrics.totalStartTime;
     this.logger.log(
-      `✅ 成交量回测完成，共处理 ${processedPeriods} 个${BACKTEST_GRANULARITY_HOURS}小时周期的数据，成功保存 ${totalSaved} 条记录`,
+      `✅ 回测完成！${processedPeriods}个周期，保存${totalSaved}条记录，总耗时${(totalTime / 1000).toFixed(1)}s`,
     );
+    this.logFinalPerformanceReport(performanceMetrics, totalPeriods, totalTime);
 
     // 最终数据完整性检查
     await this.finalDataIntegrityCheck(volumeWindows, startTime, endTime);
   }
 
   /**
-   * 更新滑动窗口数据（8小时周期版本 - 并发处理）
+   * 计算预估完成时间
+   */
+  private calculateETA(
+    periodTimes: number[],
+    remainingPeriods: number,
+  ): string {
+    if (periodTimes.length === 0) return "未知";
+
+    const recentTimes = periodTimes.slice(-5); // 使用最近5次的平均时间
+    const avgTime = recentTimes.reduce((a, b) => a + b, 0) / recentTimes.length;
+    const etaMs = avgTime * remainingPeriods;
+
+    if (etaMs < 60000) {
+      return `${Math.round(etaMs / 1000)}秒`;
+    } else if (etaMs < 3600000) {
+      return `${Math.round(etaMs / 60000)}分钟`;
+    } else {
+      return `${Math.round(etaMs / 3600000)}小时`;
+    }
+  }
+
+  /**
+   * 记录性能指标
+   */
+  private logPerformanceMetrics(metrics: any, processedPeriods: number): void {
+    const avgDataLoad =
+      metrics.dataLoadTimes.length > 0
+        ? metrics.dataLoadTimes.reduce((a: number, b: number) => a + b, 0) /
+          metrics.dataLoadTimes.length
+        : 0;
+    const avgCalc =
+      metrics.calculationTimes.length > 0
+        ? metrics.calculationTimes.reduce((a: number, b: number) => a + b, 0) /
+          metrics.calculationTimes.length
+        : 0;
+    const avgSave =
+      metrics.saveTimes.length > 0
+        ? metrics.saveTimes.reduce((a: number, b: number) => a + b, 0) /
+          metrics.saveTimes.length
+        : 0;
+
+    this.logger.log(
+      `📊 性能统计(前${processedPeriods}周期): 数据加载${avgDataLoad.toFixed(0)}ms | 计算${avgCalc.toFixed(0)}ms | 保存${avgSave.toFixed(0)}ms`,
+    );
+  }
+
+  /**
+   * 记录最终性能报告
+   */
+  private logFinalPerformanceReport(
+    metrics: any,
+    totalPeriods: number,
+    totalTime: number,
+  ): void {
+    const avgPeriodTime =
+      metrics.periodTimes.reduce((a: number, b: number) => a + b, 0) /
+      metrics.periodTimes.length;
+    const avgDataLoad =
+      metrics.dataLoadTimes.reduce((a: number, b: number) => a + b, 0) /
+      metrics.dataLoadTimes.length;
+    const avgCalc =
+      metrics.calculationTimes.reduce((a: number, b: number) => a + b, 0) /
+      metrics.calculationTimes.length;
+    const avgSave =
+      metrics.saveTimes.reduce((a: number, b: number) => a + b, 0) /
+      metrics.saveTimes.length;
+
+    this.logger.log(`📈 最终性能报告:`);
+    this.logger.log(
+      `   总周期: ${totalPeriods}, 总耗时: ${(totalTime / 1000).toFixed(1)}s`,
+    );
+    this.logger.log(
+      `   平均每周期: ${avgPeriodTime.toFixed(0)}ms (数据${avgDataLoad.toFixed(0)}ms + 计算${avgCalc.toFixed(0)}ms + 保存${avgSave.toFixed(0)}ms)`,
+    );
+    this.logger.log(
+      `   吞吐量: ${((totalPeriods * 3600) / (totalTime / 1000)).toFixed(1)} 周期/小时`,
+    );
+  }
+
+  /**
+   * 更新滑动窗口数据（优化并发处理版本）
    */
   private async updateVolumeWindowsForPeriod(
     volumeWindows: Map<string, VolumeWindow>,
@@ -423,22 +538,35 @@ export class BinanceVolumeBacktestService {
     const window24hStart = currentTime.getTime() - 24 * 60 * 60 * 1000;
 
     this.logger.log(
-      `🔄 开始并发更新滑动窗口数据，周期: ${new Date(periodStart).toISOString()} - ${new Date(periodEnd).toISOString()}`,
+      `🔄 开始优化并发更新滑动窗口数据，周期: ${new Date(periodStart).toISOString()} - ${new Date(periodEnd).toISOString()}`,
     );
 
     const symbols = Array.from(volumeWindows.keys());
     this.logger.log(`📦 需要更新 ${symbols.length} 个交易对的数据`);
 
-    // 使用并发批量获取数据
-    const concurrentBatchSize = 15; // 并发批次大小
-    const maxRetries = 3;
+    // 使用优化的并发处理池
+    const processor = async (symbol: string): Promise<KlineData[] | null> => {
+      try {
+        return await this.loadSymbolKlines(
+          symbol,
+          new Date(periodStart),
+          new Date(periodEnd),
+        );
+      } catch (error) {
+        throw new Error(`${symbol}: ${error.message}`);
+      }
+    };
 
-    const klinesResults = await this.loadSymbolKlinesBatch(
+    const { results, errors, stats } = await this.processConcurrentlyWithPool(
       symbols,
-      new Date(periodStart),
-      new Date(periodEnd),
-      maxRetries,
-      concurrentBatchSize,
+      processor,
+      {
+        initialConcurrency: 8,
+        maxConcurrency: 15,
+        adaptiveThrottling: true,
+        retryFailedItems: true,
+        maxRetries: 3,
+      },
     );
 
     // 处理获取结果并更新窗口
@@ -447,23 +575,29 @@ export class BinanceVolumeBacktestService {
     const failedSymbols: string[] = [];
     const successSymbols: string[] = [];
 
-    for (const [symbol, newKlines] of klinesResults) {
+    for (const symbol of symbols) {
       const window = volumeWindows.get(symbol);
 
-      if (window && newKlines && newKlines.length > 0) {
-        // 添加新数据
-        window.data.push(...newKlines);
+      if (results.has(symbol)) {
+        const newKlines = results.get(symbol);
+        if (window && newKlines && newKlines.length > 0) {
+          // 添加新数据
+          window.data.push(...newKlines);
 
-        // 移除超过24小时的旧数据
-        window.data = window.data.filter(
-          (kline) => kline.openTime >= window24hStart,
-        );
+          // 移除超过24小时的旧数据
+          window.data = window.data.filter(
+            (kline) => kline.openTime >= window24hStart,
+          );
 
-        // 重新计算24小时成交量
-        this.updateWindowVolume(window);
-        successCount++;
-        successSymbols.push(symbol);
-      } else if (window) {
+          // 重新计算24小时成交量
+          this.updateWindowVolume(window);
+          successCount++;
+          successSymbols.push(symbol);
+        } else {
+          failedSymbols.push(symbol);
+          failureCount++;
+        }
+      } else if (errors.has(symbol)) {
         failedSymbols.push(symbol);
         failureCount++;
       }
@@ -471,42 +605,42 @@ export class BinanceVolumeBacktestService {
 
     const successRate = ((successCount / symbols.length) * 100).toFixed(1);
     this.logger.log(
-      `📊 滑动窗口更新完成: 成功 ${successCount}/${symbols.length} (${successRate}%), 失败 ${failureCount}`,
+      `📊 优化滑动窗口更新完成: 成功 ${successCount}/${symbols.length} (${successRate}%), 失败 ${failureCount}`,
+    );
+    this.logger.log(
+      `   处理统计: 耗时 ${stats.totalTime}ms, 平均响应 ${stats.avgResponseTime.toFixed(0)}ms, 并发调整 ${stats.concurrencyAdjustments} 次`,
     );
 
-    // 只在调试模式下显示成功的币种详情
+    // 显示成功的币种详情（限制数量）
     if (successSymbols.length > 0) {
       this.logger.debug(
-        `✅ 成功更新的币种: ${successSymbols.slice(0, 10).join(', ')}${successSymbols.length > 10 ? `... (共${successSymbols.length}个)` : ''}`,
+        `✅ 成功更新的币种: ${successSymbols.slice(0, 10).join(", ")}${successSymbols.length > 10 ? `... (共${successSymbols.length}个)` : ""}`,
       );
     }
 
     // 显示失败的币种
     if (failedSymbols.length > 0) {
       this.logger.warn(
-        `❌ 失败的币种: ${failedSymbols.slice(0, 10).join(', ')}${failedSymbols.length > 10 ? `... (共${failedSymbols.length}个)` : ''}`,
+        `❌ 失败的币种: ${failedSymbols.slice(0, 10).join(", ")}${failedSymbols.length > 10 ? `... (共${failedSymbols.length}个)` : ""}`,
       );
-    }
 
-    // 如果有失败的，进行重试（但限制重试数量）
-    if (
-      failedSymbols.length > 0 &&
-      failedSymbols.length < symbols.length * 0.2
-    ) {
-      this.logger.log(
-        `🔄 对 ${failedSymbols.length} 个失败的交易对进行单独重试...`,
-      );
-      await this.retryFailedPeriodUpdate(
-        volumeWindows,
-        failedSymbols,
-        new Date(periodStart),
-        new Date(periodEnd),
-        window24hStart,
-      );
-    } else if (failedSymbols.length > 0) {
-      this.logger.warn(
-        `⚠️ 失败交易对过多 (${failedSymbols.length}/${symbols.length})，跳过重试以避免影响整体进度`,
-      );
+      // 对少量失败的交易对进行二次重试（使用更保守的设置）
+      if (failedSymbols.length < symbols.length * 0.15) {
+        this.logger.log(
+          `🔄 对 ${failedSymbols.length} 个失败的交易对进行保守重试...`,
+        );
+        await this.retryFailedPeriodUpdate(
+          volumeWindows,
+          failedSymbols,
+          new Date(periodStart),
+          new Date(periodEnd),
+          window24hStart,
+        );
+      } else {
+        this.logger.warn(
+          `⚠️ 失败交易对过多 (${failedSymbols.length}/${symbols.length})，跳过重试以避免影响整体进度`,
+        );
+      }
     }
   }
 
@@ -578,13 +712,13 @@ export class BinanceVolumeBacktestService {
     );
     if (retryErrorSymbols.length > 0) {
       this.logger.error(
-        `💥 周期更新重试时发生异常的币种: ${retryErrorSymbols.slice(0, 10).join(', ')}${retryErrorSymbols.length > 10 ? `... (共${retryErrorSymbols.length}个)` : ''}`,
+        `💥 周期更新重试时发生异常的币种: ${retryErrorSymbols.slice(0, 10).join(", ")}${retryErrorSymbols.length > 10 ? `... (共${retryErrorSymbols.length}个)` : ""}`,
       );
     }
 
     if (stillFailedSymbols.length > 0) {
       this.logger.warn(
-        `⚠️ 仍有 ${stillFailedSymbols.length} 个交易对无法获取周期数据: ${stillFailedSymbols.slice(0, 5).join(', ')}${stillFailedSymbols.length > 5 ? '...' : ''}`,
+        `⚠️ 仍有 ${stillFailedSymbols.length} 个交易对无法获取周期数据: ${stillFailedSymbols.slice(0, 5).join(", ")}${stillFailedSymbols.length > 5 ? "..." : ""}`,
       );
     }
   }
@@ -606,7 +740,7 @@ export class BinanceVolumeBacktestService {
       try {
         const klines = await this.binanceService.getKlines({
           symbol,
-          interval: '1h',
+          interval: "1h",
           startTime: startTime.getTime(),
           endTime: endTime.getTime(),
           limit: 1000,
@@ -626,7 +760,7 @@ export class BinanceVolumeBacktestService {
       } catch (error) {
         const isLastAttempt = attempt === maxRetries;
         const errorMsg =
-          error.response?.data?.msg || error.message || '未知错误';
+          error.response?.data?.msg || error.message || "未知错误";
 
         if (isLastAttempt) {
           this.logger.error(`❌ ${symbol} K线数据最终获取失败 (${timeRange})`);
@@ -680,14 +814,14 @@ export class BinanceVolumeBacktestService {
       ) {
         const latestKline = window.data[window.data.length - 1];
         const baseAsset = symbol
-          .replace('USDT', '')
-          .replace('BTC', '')
-          .replace('ETH', '');
-        const quoteAsset = symbol.includes('USDT')
-          ? 'USDT'
-          : symbol.includes('BTC')
-            ? 'BTC'
-            : 'ETH';
+          .replace("USDT", "")
+          .replace("BTC", "")
+          .replace("ETH", "");
+        const quoteAsset = symbol.includes("USDT")
+          ? "USDT"
+          : symbol.includes("BTC")
+            ? "BTC"
+            : "ETH";
 
         rankings.push({
           rank: 0, // 将在排序后设置
@@ -784,7 +918,7 @@ export class BinanceVolumeBacktestService {
       await this.volumeBacktestModel.insertMany(results);
       this.logger.log(`💾 批量保存了 ${results.length} 条回测记录到数据库`);
     } catch (error) {
-      this.logger.error('批量保存回测结果失败:', error);
+      this.logger.error("批量保存回测结果失败:", error);
       throw error;
     }
   }
@@ -806,7 +940,7 @@ export class BinanceVolumeBacktestService {
     }
 
     if (symbol) {
-      query['rankings.symbol'] = symbol;
+      query["rankings.symbol"] = symbol;
     }
 
     return this.volumeBacktestModel.find(query).sort({ timestamp: 1 }).exec();
@@ -841,7 +975,7 @@ export class BinanceVolumeBacktestService {
     startTime: Date,
     endTime: Date,
   ): Promise<void> {
-    this.logger.log('📊 开始并发预加载初始数据窗口（带重试机制）...');
+    this.logger.log("📊 开始优化并发预加载初始数据窗口（自适应重试机制）...");
 
     const symbols = Array.from(volumeWindows.keys());
     const timeRange = `${startTime.toISOString().slice(0, 16)} - ${endTime.toISOString().slice(0, 16)}`;
@@ -850,33 +984,28 @@ export class BinanceVolumeBacktestService {
       `📦 需要处理 ${symbols.length} 个交易对的数据 (${timeRange})`,
     );
 
-    // 使用并发批量获取
-    const concurrentBatchSize = 15; // 并发批次大小
-    const maxRetries = 3;
-
-    const klinesResults = await this.loadSymbolKlinesBatch(
-      symbols,
+    // 使用优化的并发预加载
+    await this.preloadVolumeWindowsOptimized(
+      volumeWindows,
       startTime,
       endTime,
-      maxRetries,
-      concurrentBatchSize,
+      {
+        maxConcurrency: 12, // 增加并发数
+        batchSize: 40, // 优化批次大小
+      },
     );
 
-    // 处理获取结果
+    // 检查预加载结果并记录统计信息
     let successCount = 0;
     let failureCount = 0;
     const failedSymbols: string[] = [];
     const successSymbols: string[] = [];
 
-    for (const [symbol, klines] of klinesResults) {
-      const window = volumeWindows.get(symbol);
-
-      if (window && klines && klines.length > 0) {
-        window.data = klines;
-        this.updateWindowVolume(window);
+    for (const [symbol, window] of volumeWindows) {
+      if (window.data && window.data.length > 0) {
         successCount++;
         successSymbols.push(symbol);
-      } else if (window) {
+      } else {
         failedSymbols.push(symbol);
         failureCount++;
       }
@@ -884,48 +1013,47 @@ export class BinanceVolumeBacktestService {
 
     const successRate = ((successCount / symbols.length) * 100).toFixed(1);
     this.logger.log(
-      `📊 预加载完成: 成功 ${successCount}/${symbols.length} (${successRate}%), 失败 ${failureCount}`,
+      `📊 优化预加载完成: 成功 ${successCount}/${symbols.length} (${successRate}%), 失败 ${failureCount}`,
     );
 
-    // 只在调试模式下显示成功的币种详情
+    // 显示成功的币种详情（限制数量）
     if (successSymbols.length > 0) {
       this.logger.debug(
-        `✅ 成功预加载的币种: ${successSymbols.slice(0, 10).join(', ')}${successSymbols.length > 10 ? `... (共${successSymbols.length}个)` : ''}`,
+        `✅ 成功预加载的币种: ${successSymbols.slice(0, 10).join(", ")}${successSymbols.length > 10 ? `... (共${successSymbols.length}个)` : ""}`,
       );
     }
 
-    // 显示失败的币种
+    // 显示失败的币种并进行重试
     if (failedSymbols.length > 0) {
       this.logger.warn(
-        `❌ 预加载失败的币种: ${failedSymbols.slice(0, 10).join(', ')}${failedSymbols.length > 10 ? `... (共${failedSymbols.length}个)` : ''}`,
+        `❌ 预加载失败的币种: ${failedSymbols.slice(0, 10).join(", ")}${failedSymbols.length > 10 ? `... (共${failedSymbols.length}个)` : ""}`,
       );
-    }
 
-    // 如果有失败的，可以选择性重试
-    if (
-      failedSymbols.length > 0 &&
-      failedSymbols.length < symbols.length * 0.2
-    ) {
-      this.logger.log(
-        `� 对 ${failedSymbols.length} 个失败的交易对进行单独重试...`,
-      );
-      await this.retryFailedPreload(
-        volumeWindows,
-        failedSymbols,
-        startTime,
-        endTime,
-      );
+      // 对失败的交易对进行单独重试（降低并发数）
+      if (failedSymbols.length < symbols.length * 0.3) {
+        this.logger.log(
+          `🔄 对 ${failedSymbols.length} 个失败的交易对进行单独重试...`,
+        );
+        await this.retryFailedPreload(
+          volumeWindows,
+          failedSymbols,
+          startTime,
+          endTime,
+        );
+      }
     }
 
     // 记录最终统计信息
-    this.logDataStatistics(volumeWindows, '预加载完成后');
+    this.logDataStatistics(volumeWindows, "预加载完成后");
 
     const stats = this.calculateDataSuccessRate(volumeWindows);
-    const successRateNum = parseFloat(stats.successRate.replace('%', ''));
-    if (successRateNum < 90) {
+    const successRateNum = parseFloat(stats.successRate.replace("%", ""));
+    if (successRateNum < 85) {
       this.logger.warn(
         `⚠️ 数据获取成功率较低 (${stats.successRate})，可能影响回测准确性`,
       );
+    } else {
+      this.logger.log(`✅ 数据质量良好 (${stats.successRate} 成功率)`);
     }
   }
 
@@ -988,13 +1116,13 @@ export class BinanceVolumeBacktestService {
     // 显示发生异常的币种汇总
     if (retryErrorSymbols.length > 0) {
       this.logger.error(
-        `💥 预加载重试时发生异常的币种: ${retryErrorSymbols.slice(0, 10).join(', ')}${retryErrorSymbols.length > 10 ? `... (共${retryErrorSymbols.length}个)` : ''}`,
+        `💥 预加载重试时发生异常的币种: ${retryErrorSymbols.slice(0, 10).join(", ")}${retryErrorSymbols.length > 10 ? `... (共${retryErrorSymbols.length}个)` : ""}`,
       );
     }
 
     if (stillFailedSymbols.length > 0) {
       this.logger.warn(
-        `⚠️ 仍有 ${stillFailedSymbols.length} 个交易对无法获取预加载数据: ${stillFailedSymbols.slice(0, 5).join(', ')}${stillFailedSymbols.length > 5 ? '...' : ''}`,
+        `⚠️ 仍有 ${stillFailedSymbols.length} 个交易对无法获取预加载数据: ${stillFailedSymbols.slice(0, 5).join(", ")}${stillFailedSymbols.length > 5 ? "..." : ""}`,
       );
     }
   }
@@ -1007,12 +1135,12 @@ export class BinanceVolumeBacktestService {
     startTime: Date,
     endTime: Date,
   ): Promise<void> {
-    this.logger.log('🔍 开始最终数据完整性检查...');
+    this.logger.log("🔍 开始最终数据完整性检查...");
 
     const stats = this.calculateDataSuccessRate(volumeWindows);
 
     if (stats.failedSymbols.length === 0) {
-      this.logger.log('✅ 所有交易对数据完整');
+      this.logger.log("✅ 所有交易对数据完整");
       return;
     }
 
@@ -1058,7 +1186,7 @@ export class BinanceVolumeBacktestService {
     );
 
     // 最终统计
-    this.logDataStatistics(volumeWindows, '最终数据完整性检查');
+    this.logDataStatistics(volumeWindows, "最终数据完整性检查");
   }
 
   /**
@@ -1078,14 +1206,14 @@ export class BinanceVolumeBacktestService {
     this.logger.log(`🔍 开始筛选有效交易对...`);
     this.logger.log(`   历史数据要求: 至少${minHistoryDays}天`);
     this.logger.log(
-      `   期货合约要求: ${requireFutures ? '必须有永续合约' : '无要求'}`,
+      `   期货合约要求: ${requireFutures ? "必须有永续合约" : "无要求"}`,
     );
     this.logger.log(
-      `   稳定币过滤: ${excludeStablecoins ? '排除稳定币' : '包含稳定币'}`,
+      `   稳定币过滤: ${excludeStablecoins ? "排除稳定币" : "包含稳定币"}`,
     );
     if (excludeStablecoins) {
       this.logger.log(
-        `   排除的稳定币: ${this.STABLECOINS.slice(0, 10).join(', ')}${this.STABLECOINS.length > 10 ? '...' : ''}`,
+        `   排除的稳定币: ${this.STABLECOINS.slice(0, 10).join(", ")}${this.STABLECOINS.length > 10 ? "..." : ""}`,
       );
     }
     const validSymbols: string[] = [];
@@ -1132,7 +1260,7 @@ export class BinanceVolumeBacktestService {
 
       const progress = ((batchNumber / totalBatches) * 100).toFixed(1);
       this.logger.log(
-        `⏳ 筛选进度: ${batchNumber}/${totalBatches} (${progress}%) - 检查: ${batch.slice(0, 3).join(', ')}${batch.length > 3 ? '...' : ''}`,
+        `⏳ 筛选进度: ${batchNumber}/${totalBatches} (${progress}%) - 检查: ${batch.slice(0, 3).join(", ")}${batch.length > 3 ? "..." : ""}`,
       );
 
       // 批量检查交易对的历史数据
@@ -1143,13 +1271,13 @@ export class BinanceVolumeBacktestService {
         try {
           // 检查1: 稳定币过滤
           if (excludeStablecoins && this.isStablecoinPair(symbol)) {
-            reasons.push('稳定币交易对');
+            reasons.push("稳定币交易对");
             isValid = false;
           }
 
           // 检查2: 期货合约要求
           if (requireFutures && !futuresAvailability[symbol]) {
-            reasons.push('无永续合约');
+            reasons.push("无永续合约");
             isValid = false;
           }
 
@@ -1171,7 +1299,7 @@ export class BinanceVolumeBacktestService {
           } else {
             invalidSymbols.push(symbol);
             invalidReasons[symbol] = reasons;
-            this.logger.debug(`❌ ${symbol} 不符合条件: ${reasons.join(', ')}`);
+            this.logger.debug(`❌ ${symbol} 不符合条件: ${reasons.join(", ")}`);
           }
         } catch (error) {
           // 如果检查过程中出错，也认为是无效的
@@ -1218,9 +1346,423 @@ export class BinanceVolumeBacktestService {
 
       const sampleInvalid = invalidSymbols.slice(0, 5);
       this.logger.log(
-        `   无效交易对示例: ${sampleInvalid.map((s) => `${s}(${invalidReasons[s].join(',')})`).join(', ')}${invalidSymbols.length > 5 ? '...' : ''}`,
+        `   无效交易对示例: ${sampleInvalid.map((s) => `${s}(${invalidReasons[s].join(",")})`).join(", ")}${invalidSymbols.length > 5 ? "..." : ""}`,
       );
     }
+
+    return { valid: validSymbols, invalid: invalidSymbols, invalidReasons };
+  }
+
+  /**
+   * 并发筛选有效交易对（优化版本）
+   */
+  private async filterValidSymbolsConcurrent(
+    symbols: string[],
+    startTime: Date,
+    minHistoryDays: number = 365,
+    requireFutures: boolean = false,
+    excludeStablecoins: boolean = true,
+    concurrency: number = 5, // 并发数量
+  ): Promise<{
+    valid: string[];
+    invalid: string[];
+    invalidReasons: { [symbol: string]: string[] };
+  }> {
+    this.logger.log(`🔍 开始并发筛选有效交易对 (并发数: ${concurrency})...`);
+    this.logger.log(`   历史数据要求: 至少${minHistoryDays}天`);
+    this.logger.log(
+      `   期货合约要求: ${requireFutures ? "必须有永续合约" : "无要求"}`,
+    );
+    this.logger.log(
+      `   稳定币过滤: ${excludeStablecoins ? "排除稳定币" : "包含稳定币"}`,
+    );
+
+    const validSymbols: string[] = [];
+    const invalidSymbols: string[] = [];
+    const invalidReasons: { [symbol: string]: string[] } = {};
+
+    // 计算需要检查的历史时间点
+    const requiredHistoryStart = new Date(
+      startTime.getTime() - minHistoryDays * 24 * 60 * 60 * 1000,
+    );
+    const checkEndTime = new Date(
+      startTime.getTime() - 7 * 24 * 60 * 60 * 1000,
+    ); // 回测前一周
+
+    this.logger.log(
+      `📅 检查历史数据范围: ${requiredHistoryStart.toISOString().slice(0, 10)} 至 ${checkEndTime.toISOString().slice(0, 10)}`,
+    );
+
+    // 批量获取期货合约信息
+    let futuresAvailability: { [symbol: string]: boolean } = {};
+    if (requireFutures) {
+      this.logger.log(`🔍 检查期货合约可用性...`);
+      try {
+        futuresAvailability =
+          await this.binanceService.checkFuturesAvailability(symbols);
+        const withFutures =
+          Object.values(futuresAvailability).filter(Boolean).length;
+        this.logger.log(
+          `📊 期货合约检查完成: ${withFutures}/${symbols.length} 个交易对有永续合约`,
+        );
+      } catch (error) {
+        this.logger.error(`期货合约检查失败: ${error.message}`);
+        symbols.forEach((symbol) => (futuresAvailability[symbol] = false));
+      }
+    }
+
+    // 创建并发任务队列
+    const symbolQueue = [...symbols];
+    const workers: Promise<void>[] = [];
+    const results = new Map<string, { valid: boolean; reasons: string[] }>();
+    const processedCount = { value: 0 };
+
+    // 创建worker函数
+    const createWorker = async (workerId: number): Promise<void> => {
+      this.logger.log(`🟢 Worker ${workerId} 启动`);
+
+      while (symbolQueue.length > 0) {
+        const symbol = symbolQueue.shift();
+        if (!symbol) break;
+
+        const reasons: string[] = [];
+        let isValid = true;
+
+        try {
+          // 检查1: 稳定币过滤
+          if (excludeStablecoins && this.isStablecoinPair(symbol)) {
+            reasons.push("稳定币交易对");
+            isValid = false;
+          }
+
+          // 检查2: 期货合约要求
+          if (requireFutures && !futuresAvailability[symbol]) {
+            reasons.push("无永续合约");
+            isValid = false;
+          }
+
+          // 检查3: 历史数据要求
+          const hasValidHistory = await this.checkSymbolHistoryData(
+            symbol,
+            requiredHistoryStart,
+            checkEndTime,
+          );
+
+          if (!hasValidHistory) {
+            reasons.push(`历史数据不足${minHistoryDays}天`);
+            isValid = false;
+          }
+
+          if (isValid) {
+            validSymbols.push(symbol);
+            this.logger.debug(`✅ ${symbol} 通过所有筛选条件`);
+          } else {
+            invalidSymbols.push(symbol);
+            invalidReasons[symbol] = reasons;
+            this.logger.debug(`❌ ${symbol} 不符合条件: ${reasons.join(", ")}`);
+          }
+        } catch (error) {
+          // 如果检查过程中出错，也认为是无效的
+          invalidSymbols.push(symbol);
+          invalidReasons[symbol] = [`检查失败: ${error.message}`];
+          this.logger.warn(`⚠️ ${symbol} 检查失败: ${error.message}`);
+        }
+
+        // 更新进度
+        processedCount.value++;
+        const progress = (
+          (processedCount.value / symbols.length) *
+          100
+        ).toFixed(1);
+
+        if (processedCount.value % 10 === 0) {
+          this.logger.log(
+            `⏳ Worker ${workerId} 进度: ${processedCount.value}/${symbols.length} (${progress}%)`,
+          );
+        }
+
+        // 控制API调用频率
+        await this.delay(this.configService.binanceRequestDelay);
+      }
+
+      this.logger.log(`🔴 Worker ${workerId} 完成`);
+    };
+
+    // 启动并发workers
+    for (let i = 0; i < concurrency; i++) {
+      workers.push(createWorker(i + 1));
+    }
+
+    // 等待所有workers完成
+    await Promise.all(workers);
+
+    // 整理结果
+    for (const [symbol, result] of results) {
+      if (result.valid) {
+        validSymbols.push(symbol);
+      } else {
+        invalidSymbols.push(symbol);
+        invalidReasons[symbol] = result.reasons;
+      }
+    }
+
+    const validRate = ((validSymbols.length / symbols.length) * 100).toFixed(1);
+    this.logger.log(`✅ 并发交易对筛选完成:`);
+    this.logger.log(`   总数: ${symbols.length}`);
+    this.logger.log(`   有效: ${validSymbols.length} (${validRate}%)`);
+    this.logger.log(
+      `   无效: ${invalidSymbols.length} (${(100 - parseFloat(validRate)).toFixed(1)}%)`,
+    );
+
+    // 统计失败原因
+    if (invalidSymbols.length > 0) {
+      const reasonStats: { [reason: string]: number } = {};
+      Object.values(invalidReasons).forEach((reasons) => {
+        reasons.forEach((reason) => {
+          reasonStats[reason] = (reasonStats[reason] || 0) + 1;
+        });
+      });
+
+      this.logger.log(`   失败原因统计:`);
+      Object.entries(reasonStats).forEach(([reason, count]) => {
+        this.logger.log(`     - ${reason}: ${count} 个`);
+      });
+    }
+
+    return { valid: validSymbols, invalid: invalidSymbols, invalidReasons };
+  }
+
+  /**
+   * 智能并发筛选有效交易对（带动态并发控制）
+   */
+  private async filterValidSymbolsSmartConcurrent(
+    symbols: string[],
+    startTime: Date,
+    minHistoryDays: number = 365,
+    requireFutures: boolean = false,
+    excludeStablecoins: boolean = true,
+    initialConcurrency: number = 5,
+  ): Promise<{
+    valid: string[];
+    invalid: string[];
+    invalidReasons: { [symbol: string]: string[] };
+  }> {
+    this.logger.log(
+      `🔍 开始智能并发筛选有效交易对 (初始并发数: ${initialConcurrency})...`,
+    );
+
+    let currentConcurrency = initialConcurrency;
+    const maxConcurrency = 10;
+    const minConcurrency = 1;
+
+    // 性能监控变量
+    const performanceMetrics = {
+      totalRequests: 0,
+      totalErrors: 0,
+      avgResponseTime: 0,
+      lastAdjustment: Date.now(),
+    };
+
+    const validSymbols: string[] = [];
+    const invalidSymbols: string[] = [];
+    const invalidReasons: { [symbol: string]: string[] } = {};
+
+    // 计算需要检查的历史时间点
+    const requiredHistoryStart = new Date(
+      startTime.getTime() - minHistoryDays * 24 * 60 * 60 * 1000,
+    );
+    const checkEndTime = new Date(
+      startTime.getTime() - 7 * 24 * 60 * 60 * 1000,
+    );
+
+    // 批量获取期货合约信息
+    let futuresAvailability: { [symbol: string]: boolean } = {};
+    if (requireFutures) {
+      this.logger.log(`🔍 检查期货合约可用性...`);
+      try {
+        futuresAvailability =
+          await this.binanceService.checkFuturesAvailability(symbols);
+        const withFutures =
+          Object.values(futuresAvailability).filter(Boolean).length;
+        this.logger.log(
+          `📊 期货合约检查完成: ${withFutures}/${symbols.length} 个交易对有永续合约`,
+        );
+      } catch (error) {
+        this.logger.error(`期货合约检查失败: ${error.message}`);
+        symbols.forEach((symbol) => (futuresAvailability[symbol] = false));
+      }
+    }
+
+    // 创建智能任务队列
+    const symbolQueue = [...symbols];
+    const results = new Map<string, { valid: boolean; reasons: string[] }>();
+    const processedCount = { value: 0 };
+
+    // 动态调整并发数量的函数
+    const adjustConcurrency = () => {
+      const now = Date.now();
+      const timeSinceLastAdjustment = now - performanceMetrics.lastAdjustment;
+
+      // 每30秒检查一次性能指标
+      if (timeSinceLastAdjustment > 30000) {
+        const errorRate =
+          performanceMetrics.totalErrors / performanceMetrics.totalRequests;
+
+        if (errorRate > 0.1 && currentConcurrency > minConcurrency) {
+          // 错误率超过10%，降低并发
+          currentConcurrency = Math.max(minConcurrency, currentConcurrency - 1);
+          this.logger.log(
+            `⬇️ 错误率过高 (${(errorRate * 100).toFixed(1)}%)，降低并发至: ${currentConcurrency}`,
+          );
+        } else if (
+          errorRate < 0.05 &&
+          performanceMetrics.avgResponseTime < 1000 &&
+          currentConcurrency < maxConcurrency
+        ) {
+          // 错误率低且响应快，增加并发
+          currentConcurrency = Math.min(maxConcurrency, currentConcurrency + 1);
+          this.logger.log(`⬆️ 性能良好，提高并发至: ${currentConcurrency}`);
+        }
+
+        performanceMetrics.lastAdjustment = now;
+        // 重置统计
+        performanceMetrics.totalRequests = 0;
+        performanceMetrics.totalErrors = 0;
+        performanceMetrics.avgResponseTime = 0;
+      }
+    };
+
+    // 创建智能worker函数
+    const createSmartWorker = async (workerId: number): Promise<void> => {
+      this.logger.log(`🟢 Smart Worker ${workerId} 启动`);
+
+      while (symbolQueue.length > 0) {
+        const symbol = symbolQueue.shift();
+        if (!symbol) break;
+
+        const requestStart = Date.now();
+
+        try {
+          const reasons: string[] = [];
+          let isValid = true;
+
+          // 检查1: 稳定币过滤
+          if (excludeStablecoins && this.isStablecoinPair(symbol)) {
+            reasons.push("稳定币交易对");
+            isValid = false;
+          }
+
+          // 检查2: 期货合约要求
+          if (requireFutures && !futuresAvailability[symbol]) {
+            reasons.push("无永续合约");
+            isValid = false;
+          }
+
+          // 检查3: 历史数据要求
+          if (isValid) {
+            const hasValidHistory = await this.checkSymbolHistoryData(
+              symbol,
+              requiredHistoryStart,
+              checkEndTime,
+            );
+
+            if (!hasValidHistory) {
+              reasons.push(`历史数据不足${minHistoryDays}天`);
+              isValid = false;
+            }
+          }
+
+          results.set(symbol, { valid: isValid, reasons });
+
+          // 更新性能指标
+          const responseTime = Date.now() - requestStart;
+          performanceMetrics.totalRequests++;
+          performanceMetrics.avgResponseTime =
+            (performanceMetrics.avgResponseTime *
+              (performanceMetrics.totalRequests - 1) +
+              responseTime) /
+            performanceMetrics.totalRequests;
+
+          // 更新进度
+          processedCount.value++;
+          const progress = (
+            (processedCount.value / symbols.length) *
+            100
+          ).toFixed(1);
+
+          if (processedCount.value % 20 === 0) {
+            this.logger.log(
+              `⏳ Smart Worker ${workerId} 进度: ${processedCount.value}/${symbols.length} (${progress}%) - 当前并发: ${currentConcurrency}`,
+            );
+          }
+        } catch (error) {
+          results.set(symbol, {
+            valid: false,
+            reasons: [`检查失败: ${error.message}`],
+          });
+          performanceMetrics.totalErrors++;
+          this.logger.warn(
+            `⚠️ Smart Worker ${workerId} - ${symbol} 检查失败: ${error.message}`,
+          );
+          processedCount.value++;
+        }
+
+        // 控制API调用频率
+        await this.delay(this.configService.binanceRequestDelay);
+
+        // 动态调整并发数量
+        adjustConcurrency();
+      }
+
+      this.logger.log(`🔴 Smart Worker ${workerId} 完成`);
+    };
+
+    // 动态启动workers
+    const workers: Promise<void>[] = [];
+
+    // 启动初始workers
+    for (let i = 0; i < currentConcurrency; i++) {
+      workers.push(createSmartWorker(i + 1));
+    }
+
+    // 动态监控和调整worker数量
+    const workerManager = setInterval(() => {
+      const expectedWorkers = Math.min(currentConcurrency, symbolQueue.length);
+      const currentWorkers = workers.length;
+
+      if (expectedWorkers > currentWorkers && symbolQueue.length > 0) {
+        // 需要更多workers
+        const newWorkersNeeded = expectedWorkers - currentWorkers;
+        for (let i = 0; i < newWorkersNeeded; i++) {
+          const workerId = currentWorkers + i + 1;
+          workers.push(createSmartWorker(workerId));
+          this.logger.log(`➕ 动态添加 Smart Worker ${workerId}`);
+        }
+      }
+    }, 5000); // 每5秒检查一次
+
+    // 等待所有workers完成
+    await Promise.all(workers);
+    clearInterval(workerManager);
+
+    // 整理结果
+    for (const [symbol, result] of results) {
+      if (result.valid) {
+        validSymbols.push(symbol);
+      } else {
+        invalidSymbols.push(symbol);
+        invalidReasons[symbol] = result.reasons;
+      }
+    }
+
+    const validRate = ((validSymbols.length / symbols.length) * 100).toFixed(1);
+    this.logger.log(`✅ 智能并发交易对筛选完成:`);
+    this.logger.log(`   总数: ${symbols.length}`);
+    this.logger.log(`   有效: ${validSymbols.length} (${validRate}%)`);
+    this.logger.log(`   最终并发数: ${currentConcurrency}`);
+    this.logger.log(
+      `   平均响应时间: ${performanceMetrics.avgResponseTime.toFixed(0)}ms`,
+    );
 
     return { valid: validSymbols, invalid: invalidSymbols, invalidReasons };
   }
@@ -1234,7 +1776,7 @@ export class BinanceVolumeBacktestService {
   ): string {
     const filterCriteria = {
       referenceTime: startTime.toISOString().slice(0, 10), // 只使用日期部分
-      quoteAsset: params.quoteAsset || 'USDT',
+      quoteAsset: params.quoteAsset || "USDT",
       minVolumeThreshold: params.minVolumeThreshold || 10000,
       minHistoryDays: params.minHistoryDays || 365,
       requireFutures: params.requireFutures || false,
@@ -1246,7 +1788,7 @@ export class BinanceVolumeBacktestService {
       filterCriteria,
       Object.keys(filterCriteria).sort(),
     );
-    return createHash('sha256').update(criteriaString).digest('hex');
+    return createHash("sha256").update(criteriaString).digest("hex");
   }
 
   /**
@@ -1335,7 +1877,7 @@ export class BinanceVolumeBacktestService {
         totalDiscovered: allSymbols.length,
         validSymbols: filterResult.valid.length,
         invalidSymbols: filterResult.invalid.length,
-        validRate: validRate + '%',
+        validRate: validRate + "%",
         reasonStats,
       };
 
@@ -1405,10 +1947,10 @@ export class BinanceVolumeBacktestService {
           $group: {
             _id: null,
             totalCaches: { $sum: 1 },
-            totalHitCount: { $sum: '$hitCount' },
-            avgHitCount: { $avg: '$hitCount' },
-            oldestCache: { $min: '$createdAt' },
-            newestCache: { $max: '$createdAt' },
+            totalHitCount: { $sum: "$hitCount" },
+            avgHitCount: { $avg: "$hitCount" },
+            oldestCache: { $min: "$createdAt" },
+            newestCache: { $max: "$createdAt" },
           },
         },
       ]);
@@ -1461,7 +2003,7 @@ export class BinanceVolumeBacktestService {
    * 从交易对中提取基础资产
    */
   private extractBaseAsset(symbol: string): string {
-    const quoteAssets = ['USDT', 'USDC', 'BTC', 'ETH', 'BNB', 'BUSD', 'FDUSD'];
+    const quoteAssets = ["USDT", "USDC", "BTC", "ETH", "BNB", "BUSD", "FDUSD"];
 
     for (const quote of quoteAssets) {
       if (symbol.endsWith(quote)) {
@@ -1483,7 +2025,7 @@ export class BinanceVolumeBacktestService {
     try {
       const testKlines = await this.binanceService.getKlines({
         symbol,
-        interval: '1d',
+        interval: "1d",
         startTime: historyStart.getTime(),
         endTime: historyEnd.getTime(),
         limit: 10,
@@ -1531,11 +2073,11 @@ export class BinanceVolumeBacktestService {
     const avgDataPoints =
       symbolsWithData > 0
         ? (totalDataPoints / symbolsWithData).toFixed(1)
-        : '0';
+        : "0";
     const dataRate =
       totalSymbols > 0
         ? ((symbolsWithData / totalSymbols) * 100).toFixed(1)
-        : '0';
+        : "0";
 
     this.logger.log(`📊 ${stage} 数据统计:`);
     this.logger.log(`   交易对总数: ${totalSymbols}`);
@@ -1567,12 +2109,12 @@ export class BinanceVolumeBacktestService {
     const successRate =
       totalSymbols > 0
         ? ((successfulSymbols / totalSymbols) * 100).toFixed(1)
-        : '0';
+        : "0";
 
     return {
       totalSymbols,
       successfulSymbols,
-      successRate: successRate + '%',
+      successRate: successRate + "%",
       failedSymbols: failedSymbols.slice(0, 10), // 只显示前10个失败的
     };
   }
@@ -1605,7 +2147,7 @@ export class BinanceVolumeBacktestService {
       const batchNumber = Math.floor(i / batchSize) + 1;
 
       this.logger.log(
-        `📦 处理批次 ${batchNumber}/${totalBatches}: ${batch.slice(0, 3).join(', ')}${batch.length > 3 ? '...' : ''}`,
+        `📦 处理批次 ${batchNumber}/${totalBatches}: ${batch.slice(0, 3).join(", ")}${batch.length > 3 ? "..." : ""}`,
       );
 
       // 并发获取当前批次的数据
@@ -1630,7 +2172,7 @@ export class BinanceVolumeBacktestService {
           const result = batchResults[j];
           const symbol = batch[j];
 
-          if (result.status === 'fulfilled') {
+          if (result.status === "fulfilled") {
             const { data, error } = result.value;
             results.set(symbol, data);
 
@@ -1640,7 +2182,7 @@ export class BinanceVolumeBacktestService {
               // this.logger.debug(`✅ ${symbol}: ${data.length} 条数据`);
             } else {
               failureCount++;
-              this.logger.warn(`❌ ${symbol}: ${error || '获取失败'}`);
+              this.logger.warn(`❌ ${symbol}: ${error || "获取失败"}`);
             }
           } else {
             // Promise被拒绝
@@ -1677,7 +2219,7 @@ export class BinanceVolumeBacktestService {
         .map(([symbol]) => symbol)
         .slice(0, 10);
       this.logger.warn(
-        `   失败的交易对示例: ${failedSymbols.join(', ')}${failureCount > 10 ? '...' : ''}`,
+        `   失败的交易对示例: ${failedSymbols.join(", ")}${failureCount > 10 ? "..." : ""}`,
       );
     }
 
@@ -1685,65 +2227,182 @@ export class BinanceVolumeBacktestService {
   }
 
   /**
-   * 带重试的单个K线数据获取（返回结果和错误信息）
+   * 独立的并发筛选方法（用于测试和优化）
    */
-  private async loadSymbolKlinesWithRetry(
-    symbol: string,
-    startTime: Date,
-    endTime: Date,
-    maxRetries: number = 3,
-  ): Promise<{ data: KlineData[] | null; error?: string }> {
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+  async filterSymbolsConcurrently(
+    symbols: string[],
+    params: {
+      minHistoryDays?: number;
+      requireFutures?: boolean;
+      excludeStablecoins?: boolean;
+      concurrency?: number;
+      referenceTime?: Date;
+    } = {},
+  ): Promise<{
+    valid: string[];
+    invalid: string[];
+    invalidReasons: { [symbol: string]: string[] };
+    stats: {
+      totalProcessed: number;
+      processingTime: number;
+      concurrency: number;
+      avgTimePerSymbol: number;
+    };
+  }> {
+    const startTime = Date.now();
+    const concurrency = params.concurrency || 5;
+    const minHistoryDays = params.minHistoryDays || 365;
+    const requireFutures = params.requireFutures || false;
+    const excludeStablecoins = params.excludeStablecoins ?? true;
+    const referenceTime = params.referenceTime || new Date();
+
+    this.logger.log(
+      `🚀 并发筛选启动: ${symbols.length} 个交易对 | 并发数: ${concurrency} | 历史要求: ${minHistoryDays}天`,
+    );
+
+    const validSymbols: string[] = [];
+    const invalidSymbols: string[] = [];
+    const invalidReasons: { [symbol: string]: string[] } = {};
+
+    // 计算历史检查时间范围
+    const requiredHistoryStart = new Date(
+      referenceTime.getTime() - minHistoryDays * 24 * 60 * 60 * 1000,
+    );
+    const checkEndTime = new Date(
+      referenceTime.getTime() - 7 * 24 * 60 * 60 * 1000,
+    );
+
+    // 批量获取期货合约信息
+    let futuresAvailability: { [symbol: string]: boolean } = {};
+    if (requireFutures) {
       try {
-        const klines = await this.binanceService.getKlines({
-          symbol,
-          interval: '1h',
-          startTime: startTime.getTime(),
-          endTime: endTime.getTime(),
-          limit: 1000,
-        });
-
-        if (attempt > 1) {
-          this.logger.debug(`🔄 ${symbol} 重试成功 (第${attempt}次)`);
-        }
-
-        return { data: klines };
+        futuresAvailability =
+          await this.binanceService.checkFuturesAvailability(symbols);
+        const withFutures =
+          Object.values(futuresAvailability).filter(Boolean).length;
+        this.logger.log(
+          `� 期货检查完成: ${withFutures}/${symbols.length} 个有永续合约`,
+        );
       } catch (error) {
-        const isLastAttempt = attempt === maxRetries;
-        const errorMsg =
-          error.response?.data?.msg || error.message || '未知错误';
-
-        if (isLastAttempt) {
-          return {
-            data: null,
-            error: `最终失败 (${maxRetries}次重试): ${errorMsg}`,
-          };
-        } else {
-          // 指数退避策略
-          const delayTime =
-            this.configService.binanceRequestDelay * Math.pow(2, attempt - 1);
-          await this.delay(delayTime);
-        }
+        this.logger.error(`期货检查失败: ${error.message}`);
+        symbols.forEach((symbol) => (futuresAvailability[symbol] = false));
       }
     }
 
-    return { data: null, error: '重试次数耗尽' };
-  }
+    // 创建处理队列
+    const symbolQueue = [...symbols];
+    const results = new Map<string, { valid: boolean; reasons: string[] }>();
+    const processedCount = { value: 0 };
 
-  /**
-   * 计算指定日期对应的周一UTC 0点
-   */
-  private getWeekStartTime(date: Date): Date {
-    const startOfWeek = new Date(date);
-    // 获取星期几 (0=周日, 1=周一, ..., 6=周六)
-    const dayOfWeek = startOfWeek.getUTCDay();
-    // 计算到周一的天数差 (周日需要回退6天，周一是0天，周二回退1天...)
-    const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    // 并发处理函数
+    const processSymbol = async (symbol: string): Promise<void> => {
+      const reasons: string[] = [];
+      let isValid = true;
 
-    startOfWeek.setUTCDate(startOfWeek.getUTCDate() - daysToSubtract);
-    startOfWeek.setUTCHours(0, 0, 0, 0);
+      try {
+        // 检查1: 稳定币过滤
+        if (excludeStablecoins && this.isStablecoinPair(symbol)) {
+          reasons.push("稳定币交易对");
+          isValid = false;
+        }
 
-    return startOfWeek;
+        // 检查2: 期货合约要求
+        if (requireFutures && !futuresAvailability[symbol]) {
+          reasons.push("无永续合约");
+          isValid = false;
+        }
+
+        // 检查3: 历史数据要求
+        if (isValid) {
+          const hasValidHistory = await this.checkSymbolHistoryData(
+            symbol,
+            requiredHistoryStart,
+            checkEndTime,
+          );
+
+          if (!hasValidHistory) {
+            reasons.push(`历史数据不足${minHistoryDays}天`);
+            isValid = false;
+          }
+        }
+
+        results.set(symbol, { valid: isValid, reasons });
+        processedCount.value++;
+
+        // 简化进度日志 - 每25个输出一次
+        if (
+          processedCount.value % 25 === 0 ||
+          processedCount.value === symbols.length
+        ) {
+          const progress = (
+            (processedCount.value / symbols.length) *
+            100
+          ).toFixed(1);
+          const recentValid =
+            results.size > 0
+              ? Array.from(results.values())
+                  .slice(-25)
+                  .filter((r) => r.valid).length
+              : 0;
+          this.logger.log(
+            `⏳ ${processedCount.value}/${symbols.length} (${progress}%) | 最近25个: ${recentValid}✅`,
+          );
+        }
+
+        // 控制API调用频率
+        await this.delay(this.configService.binanceRequestDelay);
+      } catch (error) {
+        results.set(symbol, {
+          valid: false,
+          reasons: [`检查失败: ${error.message}`],
+        });
+        processedCount.value++;
+        this.logger.warn(`⚠️ ${symbol} 检查失败: ${error.message}`);
+      }
+    };
+
+    // 使用 Promise 限制并发数量
+    const processInBatches = async (
+      symbols: string[],
+      batchSize: number,
+    ): Promise<void> => {
+      for (let i = 0; i < symbols.length; i += batchSize) {
+        const batch = symbols.slice(i, i + batchSize);
+        await Promise.all(batch.map((symbol) => processSymbol(symbol)));
+      }
+    };
+
+    // 执行并发处理
+    await processInBatches(symbolQueue, concurrency);
+
+    // 整理结果
+    for (const [symbol, result] of results) {
+      if (result.valid) {
+        validSymbols.push(symbol);
+      } else {
+        invalidSymbols.push(symbol);
+        invalidReasons[symbol] = result.reasons;
+      }
+    }
+
+    const processingTime = Date.now() - startTime;
+    const avgTimePerSymbol = processingTime / symbols.length;
+
+    this.logger.log(
+      `✅ 并发筛选完成: ${validSymbols.length}/${symbols.length} (${((validSymbols.length / symbols.length) * 100).toFixed(1)}%) | 耗时: ${processingTime}ms | 平均: ${avgTimePerSymbol.toFixed(0)}ms/个`,
+    );
+
+    return {
+      valid: validSymbols,
+      invalid: invalidSymbols,
+      invalidReasons,
+      stats: {
+        totalProcessed: symbols.length,
+        processingTime,
+        concurrency,
+        avgTimePerSymbol,
+      },
+    };
   }
 
   /**
@@ -1753,52 +2412,25 @@ export class BinanceVolumeBacktestService {
     startTime: Date,
     endTime: Date,
   ): Date[] {
-    const weekStarts: Date[] = [];
+    const weeklyTimes: Date[] = [];
+    const current = new Date(startTime.getTime());
 
-    // 找到startTime对应的周一
-    let currentWeekStart = this.getWeekStartTime(startTime);
-
-    // 如果startTime不是周一0点，并且比周一0点早，需要使用上一周的周一
-    if (startTime < currentWeekStart) {
-      currentWeekStart = new Date(
-        currentWeekStart.getTime() - 7 * 24 * 60 * 60 * 1000,
-      );
+    // 找到第一个周一
+    while (current.getDay() !== 1) {
+      current.setDate(current.getDate() - 1);
     }
 
-    // 收集所有涉及的周一时间点
-    while (currentWeekStart < endTime) {
-      weekStarts.push(new Date(currentWeekStart));
-      currentWeekStart.setUTCDate(currentWeekStart.getUTCDate() + 7); // 下一周
+    // 从第一个周一开始，每周添加一个时间点
+    while (current <= endTime) {
+      weeklyTimes.push(new Date(current));
+      current.setDate(current.getDate() + 7); // 加7天到下一个周一
     }
 
-    return weekStarts;
+    return weeklyTimes;
   }
 
   /**
-   * 根据周一时间点生成该周的symbols筛选缓存key
-   */
-  private generateWeeklyFilterHash(
-    weekStart: Date,
-    params: VolumeBacktestParamsDto,
-  ): string {
-    const filterCriteria = {
-      weekStart: weekStart.toISOString().slice(0, 10), // YYYY-MM-DD
-      quoteAsset: params.quoteAsset || 'USDT',
-      symbols: params.symbols ? [...params.symbols].sort() : [],
-      minHistoryDays: params.minHistoryDays || 365,
-      requireFutures: params.requireFutures || false,
-      excludeStablecoins: params.excludeStablecoins ?? true,
-    };
-
-    const criteriaString = JSON.stringify(
-      filterCriteria,
-      Object.keys(filterCriteria).sort(),
-    );
-    return createHash('sha256').update(criteriaString).digest('hex');
-  }
-
-  /**
-   * 使用周期性symbols计算小时排行榜（新方法）
+   * 使用周期性symbols计算每小时排行榜
    */
   private async calculateHourlyRankingsWithWeeklySymbols(
     weeklySymbolsMap: Map<string, string[]>,
@@ -1806,87 +2438,346 @@ export class BinanceVolumeBacktestService {
     endTime: Date,
     params: VolumeBacktestParamsDto,
   ): Promise<void> {
-    const granularityMs = (params.granularityHours || 8) * 60 * 60 * 1000;
-    const results: VolumeBacktest[] = [];
-    let currentTime = new Date(startTime);
-
-    this.logger.log(
-      `开始计算小时排行榜，粒度: ${params.granularityHours || 8} 小时`,
-    );
+    const granularityMs = (params.granularityHours || 1) * 60 * 60 * 1000;
+    const currentTime = new Date(startTime.getTime());
 
     while (currentTime < endTime) {
-      const periodStart = Date.now();
+      // 找到当前时间对应的周一
+      const weekStart = new Date(currentTime.getTime());
+      while (weekStart.getDay() !== 1) {
+        weekStart.setDate(weekStart.getDate() - 1);
+      }
+      weekStart.setHours(0, 0, 0, 0);
 
-      // 确定当前时间点应该使用哪一周的symbols
-      const currentWeekStart = this.getWeekStartTime(currentTime);
-      const weekKey = currentWeekStart.toISOString().slice(0, 10);
-      const activeSymbols = weeklySymbolsMap.get(weekKey);
+      const weekKey = weekStart.toISOString().slice(0, 10);
+      const symbols = weeklySymbolsMap.get(weekKey) || [];
 
-      if (!activeSymbols || activeSymbols.length === 0) {
-        this.logger.warn(
-          `⚠️ 时间点 ${currentTime.toISOString()} 对应的周一 ${weekKey} 没有找到有效的交易对，跳过`,
+      if (symbols.length > 0) {
+        await this.calculateHourlyRankingsWithBatchSave(
+          symbols,
+          currentTime,
+          new Date(currentTime.getTime() + granularityMs),
+          params,
         );
-        currentTime = new Date(currentTime.getTime() + granularityMs);
-        continue;
       }
 
-      this.logger.log(
-        `📊 ${currentTime.toISOString()} 使用周一 ${weekKey} 的 ${activeSymbols.length} 个交易对`,
-      );
+      currentTime.setTime(currentTime.getTime() + granularityMs);
+    }
+  }
 
-      // 初始化滑动窗口
-      const volumeWindows = new Map<string, VolumeWindow>();
-      for (const symbol of activeSymbols) {
-        volumeWindows.set(symbol, {
-          symbol,
-          data: [],
-          volume24h: 0,
-          quoteVolume24h: 0,
-        });
+  /**
+   * 带重试机制的K线数据加载
+   */
+  private async loadSymbolKlinesWithRetry(
+    symbol: string,
+    startTime: Date,
+    endTime: Date,
+    maxRetries: number = 3,
+  ): Promise<{ data: KlineData[] | null; error?: string }> {
+    let lastError: any;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const data = await this.loadSymbolKlines(symbol, startTime, endTime);
+        return { data };
+      } catch (error) {
+        lastError = error;
+        this.logger.warn(
+          `💥 ${symbol} K线加载失败 (尝试 ${attempt}/${maxRetries}): ${error.message}`,
+        );
+
+        if (attempt < maxRetries) {
+          // 指数退避重试
+          const delay = Math.pow(2, attempt) * 1000;
+          await this.delay(delay);
+        }
       }
-
-      // 预加载24小时数据
-      const preloadStart = new Date(
-        currentTime.getTime() - 24 * 60 * 60 * 1000,
-      );
-      await this.preloadVolumeWindowsWithRetry(
-        volumeWindows,
-        preloadStart,
-        currentTime,
-      );
-
-      // 计算当前时间点的排行榜
-      const rankings = this.calculateRankings(
-        volumeWindows,
-        params.limit || 50,
-        params.minVolumeThreshold || 10000,
-      );
-      const marketStats = this.calculateMarketStats(rankings);
-
-      const result: VolumeBacktest = {
-        timestamp: new Date(currentTime),
-        hour: currentTime.getUTCHours(),
-        rankings,
-        totalMarketVolume: marketStats.totalVolume,
-        totalMarketQuoteVolume: marketStats.totalQuoteVolume,
-        activePairs: marketStats.activePairs,
-        createdAt: new Date(),
-        calculationDuration: Date.now() - periodStart,
-      };
-
-      results.push(result);
-
-      // 单条保存结果
-      await this.saveSingleBacktestResult(result);
-
-      this.logger.log(
-        `✅ ${currentTime.toISOString()} 排行榜计算完成 (${rankings.length} 个交易对, 耗时: ${result.calculationDuration}ms)`,
-      );
-
-      // 移动到下一个时间点
-      currentTime = new Date(currentTime.getTime() + granularityMs);
     }
 
-    this.logger.log(`🎉 所有排行榜计算完成，共处理 ${results.length} 个时间点`);
+    return {
+      data: null,
+      error: `加载失败 (${maxRetries}次重试): ${lastError?.message || "未知错误"}`,
+    };
+  }
+
+  /**
+   * 高级并发处理池 - 支持动态调整并发数
+   */
+  private async processConcurrentlyWithPool<T, R>(
+    items: T[],
+    processor: (item: T) => Promise<R>,
+    options: {
+      initialConcurrency?: number;
+      maxConcurrency?: number;
+      minConcurrency?: number;
+      adaptiveThrottling?: boolean;
+      retryFailedItems?: boolean;
+      maxRetries?: number;
+    } = {},
+  ): Promise<{ results: Map<T, R>; errors: Map<T, Error>; stats: any }> {
+    const {
+      initialConcurrency = 5,
+      maxConcurrency = 20,
+      minConcurrency = 1,
+      adaptiveThrottling = true,
+      retryFailedItems = true,
+      maxRetries = 3,
+    } = options;
+
+    const results = new Map<T, R>();
+    const errors = new Map<T, Error>();
+    const metrics = {
+      processed: 0,
+      failed: 0,
+      retried: 0,
+      totalTime: 0,
+      avgResponseTime: 0,
+      currentConcurrency: initialConcurrency,
+      concurrencyAdjustments: 0,
+    };
+
+    let currentConcurrency = initialConcurrency;
+    const queue = [...items];
+    const activePromises = new Set<Promise<void>>();
+    const responseTimings: number[] = [];
+    const errorRates: number[] = [];
+
+    const startTime = Date.now();
+
+    const processItem = async (item: T, attempt: number = 1): Promise<void> => {
+      const itemStartTime = Date.now();
+
+      try {
+        const result = await processor(item);
+        results.set(item, result);
+        metrics.processed++;
+
+        const responseTime = Date.now() - itemStartTime;
+        responseTimings.push(responseTime);
+
+        // 保持最近100次的响应时间记录
+        if (responseTimings.length > 100) {
+          responseTimings.shift();
+        }
+      } catch (error) {
+        metrics.failed++;
+
+        if (retryFailedItems && attempt < maxRetries) {
+          metrics.retried++;
+          this.logger.warn(
+            `⚠️ 项目处理失败，正在重试 (${attempt}/${maxRetries}): ${error.message}`,
+          );
+          await this.delay(Math.pow(2, attempt) * 1000); // 指数退避
+          return processItem(item, attempt + 1);
+        } else {
+          errors.set(item, error as Error);
+          this.logger.error(`❌ 项目处理最终失败: ${error.message}`);
+        }
+      }
+    };
+
+    const adjustConcurrency = () => {
+      if (!adaptiveThrottling) return;
+
+      const recentResponseTimes = responseTimings.slice(-20);
+      const recentErrors = errorRates.slice(-10);
+
+      if (recentResponseTimes.length >= 10) {
+        const avgResponseTime =
+          recentResponseTimes.reduce((a, b) => a + b, 0) /
+          recentResponseTimes.length;
+        const recentErrorRate =
+          recentErrors.length > 0
+            ? recentErrors.reduce((a, b) => a + b, 0) / recentErrors.length
+            : 0;
+
+        // 如果响应时间变慢或错误率增加，降低并发数
+        if (avgResponseTime > 5000 || recentErrorRate > 0.1) {
+          if (currentConcurrency > minConcurrency) {
+            currentConcurrency = Math.max(
+              minConcurrency,
+              Math.floor(currentConcurrency * 0.8),
+            );
+            metrics.concurrencyAdjustments++;
+            this.logger.log(
+              `⬇️ 降低并发数至 ${currentConcurrency} (响应时间: ${avgResponseTime.toFixed(0)}ms, 错误率: ${(recentErrorRate * 100).toFixed(1)}%)`,
+            );
+          }
+        }
+        // 如果性能良好，适度增加并发数
+        else if (
+          avgResponseTime < 2000 &&
+          recentErrorRate < 0.05 &&
+          currentConcurrency < maxConcurrency
+        ) {
+          currentConcurrency = Math.min(maxConcurrency, currentConcurrency + 1);
+          metrics.concurrencyAdjustments++;
+          this.logger.log(`⬆️ 增加并发数至 ${currentConcurrency} (性能良好)`);
+        }
+      }
+    };
+
+    // 主处理循环
+    while (queue.length > 0 || activePromises.size > 0) {
+      // 填充活跃任务池
+      while (queue.length > 0 && activePromises.size < currentConcurrency) {
+        const item = queue.shift()!;
+        const promise = processItem(item).then(() => {
+          activePromises.delete(promise);
+        });
+        activePromises.add(promise);
+      }
+
+      // 等待至少一个任务完成
+      if (activePromises.size > 0) {
+        await Promise.race(activePromises);
+      }
+
+      // 每处理一定数量后调整并发数
+      if ((metrics.processed + metrics.failed) % 20 === 0) {
+        adjustConcurrency();
+      }
+
+      // 计算错误率
+      const totalProcessed = metrics.processed + metrics.failed;
+      if (totalProcessed > 0) {
+        const currentErrorRate = metrics.failed / totalProcessed;
+        errorRates.push(currentErrorRate);
+        if (errorRates.length > 10) {
+          errorRates.shift();
+        }
+      }
+    }
+
+    metrics.totalTime = Date.now() - startTime;
+    metrics.avgResponseTime =
+      responseTimings.length > 0
+        ? responseTimings.reduce((a, b) => a + b, 0) / responseTimings.length
+        : 0;
+    metrics.currentConcurrency = currentConcurrency;
+
+    this.logger.log(
+      `🎯 并发处理完成: ${metrics.processed}/${items.length} 成功, ${metrics.failed} 失败, ${metrics.retried} 重试`,
+    );
+    this.logger.log(
+      `   总耗时: ${metrics.totalTime}ms, 平均响应: ${metrics.avgResponseTime.toFixed(0)}ms, 最终并发数: ${currentConcurrency}`,
+    );
+
+    return { results, errors, stats: metrics };
+  }
+
+  /**
+   * 批量处理K线数据 - 优化版本
+   */
+  private async loadKlinesBatchOptimized(
+    symbols: string[],
+    startTime: Date,
+    endTime: Date,
+    options: {
+      maxConcurrency?: number;
+      enableAdaptiveThrottling?: boolean;
+      retryFailed?: boolean;
+    } = {},
+  ): Promise<Map<string, KlineData[] | null>> {
+    const {
+      maxConcurrency = 10,
+      enableAdaptiveThrottling = true,
+      retryFailed = true,
+    } = options;
+
+    this.logger.log(`🚀 开始优化批量加载 ${symbols.length} 个交易对的K线数据`);
+
+    const processor = async (symbol: string): Promise<KlineData[] | null> => {
+      try {
+        return await this.loadSymbolKlines(symbol, startTime, endTime);
+      } catch (error) {
+        throw new Error(`${symbol}: ${error.message}`);
+      }
+    };
+
+    const { results, errors } = await this.processConcurrentlyWithPool(
+      symbols,
+      processor,
+      {
+        maxConcurrency,
+        adaptiveThrottling: enableAdaptiveThrottling,
+        retryFailedItems: retryFailed,
+        maxRetries: 3,
+      },
+    );
+
+    // 转换结果格式
+    const finalResults = new Map<string, KlineData[] | null>();
+
+    for (const symbol of symbols) {
+      if (results.has(symbol)) {
+        finalResults.set(symbol, results.get(symbol)!);
+      } else if (errors.has(symbol)) {
+        this.logger.warn(
+          `❌ ${symbol} 最终加载失败: ${errors.get(symbol)!.message}`,
+        );
+        finalResults.set(symbol, null);
+      } else {
+        finalResults.set(symbol, null);
+      }
+    }
+
+    const successCount = Array.from(finalResults.values()).filter(
+      (data) => data !== null,
+    ).length;
+    this.logger.log(
+      `✅ 批量加载完成: ${successCount}/${symbols.length} 个交易对成功`,
+    );
+
+    return finalResults;
+  }
+
+  /**
+   * 预加载数据 - 并发优化版本
+   */
+  private async preloadVolumeWindowsOptimized(
+    volumeWindows: Map<string, VolumeWindow>,
+    startTime: Date,
+    endTime: Date,
+    options: {
+      maxConcurrency?: number;
+      batchSize?: number;
+    } = {},
+  ): Promise<void> {
+    const { maxConcurrency = 8, batchSize = 50 } = options;
+    const symbols = Array.from(volumeWindows.keys());
+
+    this.logger.log(`🔄 开始并发预加载 ${symbols.length} 个交易对的数据窗口`);
+
+    // 分批处理以避免内存压力
+    for (let i = 0; i < symbols.length; i += batchSize) {
+      const batch = symbols.slice(i, i + batchSize);
+      this.logger.log(
+        `   处理批次 ${Math.floor(i / batchSize) + 1}/${Math.ceil(symbols.length / batchSize)}: ${batch.length} 个交易对`,
+      );
+
+      const klineResults = await this.loadKlinesBatchOptimized(
+        batch,
+        startTime,
+        endTime,
+        { maxConcurrency, retryFailed: true },
+      );
+
+      // 更新数据窗口
+      for (const [symbol, klineData] of klineResults) {
+        const window = volumeWindows.get(symbol);
+        if (window && klineData) {
+          window.data = klineData;
+          this.updateWindowVolume(window);
+        }
+      }
+
+      // 批次间短暂暂停，避免API压力
+      if (i + batchSize < symbols.length) {
+        await this.delay(500);
+      }
+    }
+
+    this.logger.log(`✅ 预加载完成: ${symbols.length} 个数据窗口已初始化`);
   }
 }

@@ -1,10 +1,10 @@
-import { Controller, Get, Param } from '@nestjs/common';
+import { Controller, Get, Param } from "@nestjs/common";
 import {
   BenchmarkService,
   BenchmarkAsset,
-} from '../services/benchmark.service';
+} from "../services/benchmark.service";
 
-@Controller('v1/benchmark')
+@Controller("v1/benchmark")
 export class BenchmarkController {
   constructor(private readonly benchmarkService: BenchmarkService) {}
 
@@ -13,8 +13,8 @@ export class BenchmarkController {
     return this.benchmarkService.getAllBenchmarks();
   }
 
-  @Get(':id')
-  getBenchmarkById(@Param('id') id: string): BenchmarkAsset {
+  @Get(":id")
+  getBenchmarkById(@Param("id") id: string): BenchmarkAsset {
     const benchmark = this.benchmarkService.getBenchmarkById(id);
     if (!benchmark) {
       throw new Error(`Benchmark with ID ${id} not found`);
@@ -22,14 +22,14 @@ export class BenchmarkController {
     return benchmark;
   }
 
-  @Get('category/:category')
+  @Get("category/:category")
   getBenchmarksByCategory(
-    @Param('category') category: string,
+    @Param("category") category: string,
   ): BenchmarkAsset[] {
     return this.benchmarkService.getBenchmarksByCategory(category);
   }
 
-  @Get('categories')
+  @Get("categories")
   getCategories(): string[] {
     return this.benchmarkService.getCategories();
   }

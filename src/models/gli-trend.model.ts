@@ -1,7 +1,7 @@
 export interface GliTrendPeriod {
   startDate: string;
   endDate: string;
-  trend: 'up' | 'down';
+  trend: "up" | "down";
   label?: string;
   percentChange?: number; // GLI在该时段的百分比变化
 }

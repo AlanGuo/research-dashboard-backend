@@ -6,8 +6,8 @@ import {
   IsDateString,
   Min,
   Max,
-} from 'class-validator';
-import { Transform } from 'class-transformer';
+} from "class-validator";
+import { Transform } from "class-transformer";
 
 export class VolumeBacktestParamsDto {
   @IsDateString()
@@ -36,10 +36,10 @@ export class VolumeBacktestParamsDto {
 
   @IsOptional()
   @IsString()
-  quoteAsset?: string = 'USDT'; // 基准计价货币，默认USDT
+  quoteAsset?: string = "USDT"; // 基准计价货币，默认USDT
 
   @IsOptional()
-  @Transform(({ value }) => value === 'true')
+  @Transform(({ value }) => value === "true")
   includeInactive?: boolean = false; // 是否包含非活跃交易对
 
   @IsOptional()
@@ -50,11 +50,11 @@ export class VolumeBacktestParamsDto {
   minHistoryDays?: number = 365; // 最少历史数据天数，默认365天（1年）
 
   @IsOptional()
-  @Transform(({ value }) => value === 'true')
+  @Transform(({ value }) => value === "true")
   requireFutures?: boolean = false; // 是否要求有期货合约可做空
 
   @IsOptional()
-  @Transform(({ value }) => value === 'true')
+  @Transform(({ value }) => value === "true")
   excludeStablecoins?: boolean = true; // 是否排除稳定币，默认排除
 
   @IsOptional()
@@ -63,6 +63,13 @@ export class VolumeBacktestParamsDto {
   @Max(24)
   @Transform(({ value }) => parseInt(value))
   granularityHours?: number = 8; // 回测粒度（小时），默认8小时
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(20)
+  @Transform(({ value }) => parseInt(value))
+  concurrency?: number = 5; // 筛选并发数量，默认5个并发任务
 }
 
 export class VolumeBacktestQueryDto {

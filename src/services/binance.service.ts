@@ -1,7 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
-import axios from 'axios';
-import { HttpsProxyAgent } from 'https-proxy-agent';
-import { ConfigService } from '../config/config.service';
+import { Injectable, Logger } from "@nestjs/common";
+import axios from "axios";
+import { HttpsProxyAgent } from "https-proxy-agent";
+import { ConfigService } from "../config/config.service";
 
 interface KlineData {
   openTime: number;
@@ -31,7 +31,7 @@ export class BinanceService {
     params?: Record<string, any>,
     options?: {
       timeout?: number;
-      method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+      method?: "GET" | "POST" | "PUT" | "DELETE";
       data?: any;
       maxRetries?: number;
       context?: string; // 添加上下文信息
@@ -39,7 +39,7 @@ export class BinanceService {
     },
   ): Promise<T> {
     const maxRetries = options?.maxRetries || 3;
-    const context = options?.context || '';
+    const context = options?.context || "";
     const useFuturesApi = options?.useFuturesApi || false;
 
     // 根据API类型选择基础URL
@@ -48,13 +48,13 @@ export class BinanceService {
       : this.configService.binanceApiUrl;
 
     // 创建请求标识符用于日志追踪
-    const apiType = useFuturesApi ? '[期货API]' : '[现货API]';
-    const requestId = `${apiType}${endpoint}${params?.symbol ? `[${params.symbol}]` : ''}${context ? `(${context})` : ''}`;
+    const apiType = useFuturesApi ? "[期货API]" : "[现货API]";
+    const requestId = `${apiType}${endpoint}${params?.symbol ? `[${params.symbol}]` : ""}${context ? `(${context})` : ""}`;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         const proxyUrl =
-          process.env.HTTPS_PROXY || process.env.HTTP_PROXY || '';
+          process.env.HTTPS_PROXY || process.env.HTTP_PROXY || "";
         const httpsProxyAgent = proxyUrl
           ? new HttpsProxyAgent(proxyUrl, {
               rejectUnauthorized: false,
@@ -62,7 +62,7 @@ export class BinanceService {
           : undefined;
 
         const config: any = {
-          method: options?.method || 'GET',
+          method: options?.method || "GET",
           url: `${baseUrl}${endpoint}`,
           params: params,
           data: options?.data,
@@ -87,8 +87,8 @@ export class BinanceService {
       } catch (error) {
         const isLastAttempt = attempt === maxRetries;
         const errorMsg =
-          error.response?.data?.msg || error.message || '未知错误';
-        const statusCode = error.response?.status || 'N/A';
+          error.response?.data?.msg || error.message || "未知错误";
+        const statusCode = error.response?.status || "N/A";
 
         if (isLastAttempt) {
           this.logger.error(
@@ -110,7 +110,7 @@ export class BinanceService {
           // 如果是速率限制错误，使用更长的延迟
           if (
             error.response?.status === 429 ||
-            error.message.includes('rate limit')
+            error.message.includes("rate limit")
           ) {
             delayMs = 5000 * attempt; // 5s, 10s, 15s...
             this.logger.warn(
@@ -133,7 +133,7 @@ export class BinanceService {
    * 获取服务器时间
    */
   async getServerTime(): Promise<{ serverTime: number; localTime: string }> {
-    const data = await this.callBinanceApi('/api/v3/time');
+    const data = await this.callBinanceApi("/api/v3/time");
     return {
       serverTime: data.serverTime,
       localTime: new Date(data.serverTime).toISOString(),
@@ -144,7 +144,7 @@ export class BinanceService {
    * 获取交易对信息
    */
   async getExchangeInfo(): Promise<any> {
-    return this.callBinanceApi('/api/v3/exchangeInfo');
+    return this.callBinanceApi("/api/v3/exchangeInfo");
   }
 
   /**
@@ -152,7 +152,7 @@ export class BinanceService {
    */
   async get24hrTicker(symbol?: string): Promise<any> {
     const params = symbol ? { symbol } : {};
-    return this.callBinanceApi('/api/v3/ticker/24hr', params);
+    return this.callBinanceApi("/api/v3/ticker/24hr", params);
   }
 
   /**
@@ -167,13 +167,13 @@ export class BinanceService {
   }): Promise<KlineData[]> {
     const startTimeStr = params.startTime
       ? new Date(params.startTime).toISOString().slice(0, 16)
-      : '';
+      : "";
     const endTimeStr = params.endTime
       ? new Date(params.endTime).toISOString().slice(0, 16)
-      : '';
+      : "";
     const context = `${params.symbol} ${startTimeStr}-${endTimeStr}`;
 
-    const data = await this.callBinanceApi('/api/v3/klines', params, {
+    const data = await this.callBinanceApi("/api/v3/klines", params, {
       context,
     });
     return data.map((kline) => ({
@@ -196,10 +196,10 @@ export class BinanceService {
    */
   async getFuturesExchangeInfo(): Promise<any> {
     return this.callBinanceApi(
-      '/fapi/v1/exchangeInfo',
+      "/fapi/v1/exchangeInfo",
       {},
       {
-        context: '期货交易所信息',
+        context: "期货交易所信息",
         useFuturesApi: true, // 使用期货API
       },
     );
@@ -216,12 +216,12 @@ export class BinanceService {
     );
 
     try {
-      this.logger.debug('正在获取期货交易所信息...');
+      this.logger.debug("正在获取期货交易所信息...");
       const futuresInfo = await this.getFuturesExchangeInfo();
 
       if (!futuresInfo || !futuresInfo.symbols) {
-        this.logger.error('期货交易所信息返回格式异常:', futuresInfo);
-        throw new Error('期货交易所信息格式异常');
+        this.logger.error("期货交易所信息返回格式异常:", futuresInfo);
+        throw new Error("期货交易所信息格式异常");
       }
 
       this.logger.log(
@@ -230,7 +230,7 @@ export class BinanceService {
 
       // 过滤出永续合约
       const perpetualContracts = futuresInfo.symbols.filter((s: any) => {
-        return s.status === 'TRADING' && s.contractType === 'PERPETUAL';
+        return s.status === "TRADING" && s.contractType === "PERPETUAL";
       });
 
       this.logger.log(`🔍 其中永续合约数量: ${perpetualContracts.length}`);
@@ -241,7 +241,7 @@ export class BinanceService {
 
       // 记录一些示例永续合约
       const sampleFutures = Array.from(futuresSymbols).slice(0, 10);
-      this.logger.debug(`永续合约示例: ${sampleFutures.join(', ')}`);
+      this.logger.debug(`永续合约示例: ${sampleFutures.join(", ")}`);
 
       const result: { [symbol: string]: boolean } = {};
       const withFutures: string[] = [];
@@ -269,18 +269,18 @@ export class BinanceService {
 
       if (withFutures.length > 0) {
         const sampleWith = withFutures.slice(0, 5);
-        this.logger.debug(`   有期货合约示例: ${sampleWith.join(', ')}`);
+        this.logger.debug(`   有期货合约示例: ${sampleWith.join(", ")}`);
       }
 
       if (withoutFutures.length > 0) {
         const sampleWithout = withoutFutures.slice(0, 5);
-        this.logger.debug(`   无期货合约示例: ${sampleWithout.join(', ')}`);
+        this.logger.debug(`   无期货合约示例: ${sampleWithout.join(", ")}`);
       }
 
       return result;
     } catch (error) {
-      this.logger.error('获取期货交易所信息失败:', error);
-      this.logger.error('错误详情:', {
+      this.logger.error("获取期货交易所信息失败:", error);
+      this.logger.error("错误详情:", {
         message: error.message,
         status: error.response?.status,
         statusText: error.response?.statusText,
@@ -288,7 +288,7 @@ export class BinanceService {
       });
 
       // 如果获取失败，默认认为都没有期货合约
-      this.logger.warn('⚠️ 由于期货API调用失败，将所有交易对标记为无期货合约');
+      this.logger.warn("⚠️ 由于期货API调用失败，将所有交易对标记为无期货合约");
       const result: { [symbol: string]: boolean } = {};
       symbols.forEach((symbol) => (result[symbol] = false));
       return result;
@@ -304,7 +304,7 @@ export class BinanceService {
     message: string;
   }> {
     try {
-      this.logger.log('开始测试Binance API连通性...');
+      this.logger.log("开始测试Binance API连通性...");
 
       const timeData = await this.getServerTime();
       this.logger.log(`Binance服务器时间: ${timeData.localTime}`);
@@ -312,10 +312,10 @@ export class BinanceService {
       return {
         success: true,
         serverTime: timeData.localTime,
-        message: 'Binance API连接正常',
+        message: "Binance API连接正常",
       };
     } catch (error) {
-      this.logger.error('Binance API连通性测试失败:', error);
+      this.logger.error("Binance API连通性测试失败:", error);
       throw error;
     }
   }
@@ -330,17 +330,17 @@ export class BinanceService {
     message: string;
   }> {
     try {
-      this.logger.log('开始测试Binance期货API连通性...');
+      this.logger.log("开始测试Binance期货API连通性...");
 
       const futuresInfo = await this.getFuturesExchangeInfo();
 
       if (!futuresInfo || !futuresInfo.symbols) {
-        throw new Error('期货API返回数据格式异常');
+        throw new Error("期货API返回数据格式异常");
       }
 
       const perpetualContracts = futuresInfo.symbols
         .filter(
-          (s: any) => s.status === 'TRADING' && s.contractType === 'PERPETUAL',
+          (s: any) => s.status === "TRADING" && s.contractType === "PERPETUAL",
         )
         .map((s: any) => s.symbol);
 
@@ -349,16 +349,16 @@ export class BinanceService {
       this.logger.log(
         `✅ 期货API连接正常，永续合约数量: ${perpetualContracts.length}`,
       );
-      this.logger.log(`示例合约: ${sampleContracts.join(', ')}`);
+      this.logger.log(`示例合约: ${sampleContracts.join(", ")}`);
 
       return {
         success: true,
         contractCount: perpetualContracts.length,
         sampleContracts,
-        message: '期货API连接正常',
+        message: "期货API连接正常",
       };
     } catch (error) {
-      this.logger.error('期货API连通性测试失败:', error);
+      this.logger.error("期货API连通性测试失败:", error);
       return {
         success: false,
         contractCount: 0,

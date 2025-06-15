@@ -1,8 +1,8 @@
-import { Controller, Get, Param, Query, Logger } from '@nestjs/common';
-import { AssetTrendService } from '../services/asset-trend.service';
-import { AssetTrendResponse } from '../models/asset-trend.model';
+import { Controller, Get, Param, Query, Logger } from "@nestjs/common";
+import { AssetTrendService } from "../services/asset-trend.service";
+import { AssetTrendResponse } from "../models/asset-trend.model";
 
-@Controller('v1/asset-trend')
+@Controller("v1/asset-trend")
 export class AssetTrendController {
   private readonly logger = new Logger(AssetTrendController.name);
   constructor(private readonly assetTrendService: AssetTrendService) {}
@@ -12,12 +12,12 @@ export class AssetTrendController {
    */
   @Get()
   public async getAllAssetTrends(
-    @Query('forceUpdate') forceUpdate?: string,
-    @Query('trendType') trendType: 'centralBank' | 'm2' = 'centralBank',
+    @Query("forceUpdate") forceUpdate?: string,
+    @Query("trendType") trendType: "centralBank" | "m2" = "centralBank",
   ): Promise<AssetTrendResponse> {
     try {
       // 检查是否需要强制更新
-      const shouldForceUpdate = forceUpdate === 'true';
+      const shouldForceUpdate = forceUpdate === "true";
 
       // 尝试从数据库获取数据
       let trends = await this.assetTrendService.getAllAssetTrends(trendType);
@@ -25,7 +25,7 @@ export class AssetTrendController {
       // 如果数据库中没有数据或需要强制更新，则计算并存储
       if (trends.length === 0 || shouldForceUpdate) {
         this.logger.log(
-          '数据库中没有资产趋势表现数据或需要强制更新，开始计算...',
+          "数据库中没有资产趋势表现数据或需要强制更新，开始计算...",
         );
         trends =
           await this.assetTrendService.calculateAndStoreAllAssetTrends(
@@ -39,12 +39,12 @@ export class AssetTrendController {
         timestamp: new Date().toISOString(),
       };
     } catch (error) {
-      this.logger.error('获取资产趋势表现数据失败', error);
+      this.logger.error("获取资产趋势表现数据失败", error);
       return {
         success: false,
         data: [],
         timestamp: new Date().toISOString(),
-        message: '获取资产趋势表现数据失败',
+        message: "获取资产趋势表现数据失败",
       };
     }
   }
@@ -52,15 +52,15 @@ export class AssetTrendController {
   /**
    * 获取单个资产在各趋势期间的表现数据
    */
-  @Get(':assetId')
+  @Get(":assetId")
   public async getAssetTrend(
-    @Param('assetId') assetId: string,
-    @Query('forceUpdate') forceUpdate?: string,
-    @Query('trendType') trendType: 'centralBank' | 'm2' = 'centralBank',
+    @Param("assetId") assetId: string,
+    @Query("forceUpdate") forceUpdate?: string,
+    @Query("trendType") trendType: "centralBank" | "m2" = "centralBank",
   ): Promise<AssetTrendResponse> {
     try {
       // 检查是否需要强制更新
-      const shouldForceUpdate = forceUpdate === 'true';
+      const shouldForceUpdate = forceUpdate === "true";
 
       // 尝试从数据库获取数据
       let trend = await this.assetTrendService.getAssetTrend(
@@ -95,12 +95,12 @@ export class AssetTrendController {
         };
       }
     } catch (error) {
-      this.logger.error('获取资产趋势表现数据失败', error);
+      this.logger.error("获取资产趋势表现数据失败", error);
       return {
         success: false,
         data: [],
         timestamp: new Date().toISOString(),
-        message: '获取资产趋势表现数据失败',
+        message: "获取资产趋势表现数据失败",
       };
     }
   }
@@ -108,10 +108,10 @@ export class AssetTrendController {
   /**
    * 强制重新计算并存储所有资产在各趋势期间的表现
    */
-  @Get('recalculate/all')
+  @Get("recalculate/all")
   public async recalculateAllAssetTrends(): Promise<AssetTrendResponse> {
     try {
-      this.logger.log('开始重新计算所有资产的趋势表现数据...');
+      this.logger.log("开始重新计算所有资产的趋势表现数据...");
       const trends =
         await this.assetTrendService.calculateAndStoreAllAssetTrends(true);
 
@@ -119,15 +119,15 @@ export class AssetTrendController {
         success: true,
         data: trends,
         timestamp: new Date().toISOString(),
-        message: '已重新计算并存储所有资产的趋势表现数据',
+        message: "已重新计算并存储所有资产的趋势表现数据",
       };
     } catch (error) {
-      this.logger.error('重新计算资产趋势表现数据失败', error);
+      this.logger.error("重新计算资产趋势表现数据失败", error);
       return {
         success: false,
         data: [],
         timestamp: new Date().toISOString(),
-        message: '重新计算资产趋势表现数据失败',
+        message: "重新计算资产趋势表现数据失败",
       };
     }
   }
@@ -137,18 +137,18 @@ export class AssetTrendController {
    * @param assetId 资产ID
    * @param query 查询参数，包含intervalType、intervalCount和trendType
    */
-  @Get(':assetId/lag-days')
+  @Get(":assetId/lag-days")
   public async updateAssetLagDays(
-    @Param('assetId') assetId: string,
+    @Param("assetId") assetId: string,
     @Query()
     query: {
       intervalType: string;
       intervalCount: number;
-      trendType?: 'centralBank' | 'm2';
+      trendType?: "centralBank" | "m2";
     },
   ): Promise<AssetTrendResponse> {
     try {
-      const trendType = query.trendType || 'centralBank';
+      const trendType = query.trendType || "centralBank";
       this.logger.log(
         `开始临时计算资产 ${assetId} 在特定滞后天数下的${trendType}趋势表现，间隔类型: ${query.intervalType}, 间隔数量: ${query.intervalCount}`,
       );
@@ -157,20 +157,20 @@ export class AssetTrendController {
         assetId,
         query.intervalType,
         query.intervalCount,
-        trendType as 'centralBank' | 'm2',
+        trendType as "centralBank" | "m2",
       );
 
       if (tempTrend) {
         // 计算滞后天数
         let lagDays = 0;
         switch (query.intervalType) {
-          case '1D':
+          case "1D":
             lagDays = query.intervalCount;
             break;
-          case '1W':
+          case "1W":
             lagDays = query.intervalCount * 7;
             break;
-          case '1M':
+          case "1M":
             lagDays = query.intervalCount * 30;
             break;
           default:

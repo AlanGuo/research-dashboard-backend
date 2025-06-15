@@ -1,6 +1,6 @@
-import { Injectable, OnModuleDestroy, Logger } from '@nestjs/common';
+import { Injectable, OnModuleDestroy, Logger } from "@nestjs/common";
 // 使用 require 导入 JavaScript 模块
-const TradingViewLib = require('../lib/tradingview_api/main');
+const TradingViewLib = require("../lib/tradingview_api/main");
 const { TradingView } = TradingViewLib;
 
 @Injectable()
@@ -34,7 +34,7 @@ export class TradingViewService implements OnModuleDestroy {
   private initClient(): void {
     try {
       this.client = new TradingView.Client();
-      this.logger.log('TradingView client initialized');
+      this.logger.log("TradingView client initialized");
     } catch (error) {
       this.logger.error(
         `Failed to initialize TradingView client: ${error.message}`,
@@ -77,12 +77,12 @@ export class TradingViewService implements OnModuleDestroy {
    */
   private async checkClientHealth(): Promise<boolean> {
     try {
-      this.logger.debug('Performing client health check...');
+      this.logger.debug("Performing client health check...");
       // 执行一个简单的查询测试客户端是否正常
       const testChart = new this.client.Session.Chart();
       const testPromise = new Promise<boolean>((resolve, reject) => {
         const timeoutId = setTimeout(() => {
-          reject(new Error('Health check timeout'));
+          reject(new Error("Health check timeout"));
         }, 5000);
 
         testChart.onUpdate(() => {
@@ -92,11 +92,11 @@ export class TradingViewService implements OnModuleDestroy {
 
         testChart.onError(() => {
           clearTimeout(timeoutId);
-          reject(new Error('Health check failed'));
+          reject(new Error("Health check failed"));
         });
 
         // 设置一个简单的市场查询
-        testChart.setMarket('BINANCE:BTCUSDT', { timeframe: 'D', range: 1 });
+        testChart.setMarket("BINANCE:BTCUSDT", { timeframe: "D", range: 1 });
       });
 
       const result = await testPromise;
@@ -105,7 +105,7 @@ export class TradingViewService implements OnModuleDestroy {
       } catch (error) {
         this.logger.warn(`Error deleting test chart: ${error.message}`);
       }
-      this.logger.debug('Client health check passed');
+      this.logger.debug("Client health check passed");
       return result;
     } catch (error) {
       this.logger.error(
@@ -120,7 +120,7 @@ export class TradingViewService implements OnModuleDestroy {
    * 重置TradingView客户端
    */
   private async resetClient(): Promise<void> {
-    this.logger.warn('Resetting TradingView client...');
+    this.logger.warn("Resetting TradingView client...");
 
     // 先清理所有charts
     const chartIds = Array.from(this.charts.keys());
@@ -132,7 +132,7 @@ export class TradingViewService implements OnModuleDestroy {
     if (this.client) {
       try {
         await this.client.end();
-        this.logger.log('Old TradingView client closed successfully');
+        this.logger.log("Old TradingView client closed successfully");
       } catch (error) {
         this.logger.error(
           `Error closing TradingView client: ${error.message}`,
@@ -145,7 +145,7 @@ export class TradingViewService implements OnModuleDestroy {
     this.initClient();
     this.requestCounter = 0;
     this.timeoutCounter = 0; // 重置超时计数器
-    this.logger.log('TradingView client reset completed');
+    this.logger.log("TradingView client reset completed");
   }
 
   /**
@@ -188,7 +188,7 @@ export class TradingViewService implements OnModuleDestroy {
     if (this.requestCounter % 100 === 0) {
       const isHealthy = await this.checkClientHealth();
       if (!isHealthy) {
-        this.logger.warn('Client health check failed, resetting client...');
+        this.logger.warn("Client health check failed, resetting client...");
         await this.resetClient();
       }
     }
@@ -231,12 +231,12 @@ export class TradingViewService implements OnModuleDestroy {
         // 设置错误处理
         chart.onError((...err: any[]) => {
           this.logger.error(
-            `[${requestId}] Chart error for ${formattedSymbol}: ${err.join(' ')}`,
+            `[${requestId}] Chart error for ${formattedSymbol}: ${err.join(" ")}`,
           );
           this.cleanupChart(chartId);
           reject(
             new Error(
-              `Failed to fetch data for ${formattedSymbol}: ${err.join(' ')}`,
+              `Failed to fetch data for ${formattedSymbol}: ${err.join(" ")}`,
             ),
           );
         });
@@ -283,7 +283,7 @@ export class TradingViewService implements OnModuleDestroy {
           timeframe: tvInterval,
           range: limit,
           // 调整股息数据：前复权
-          adjustment: 'dividends',
+          adjustment: "dividends",
         };
 
         // 正确使用from参数
@@ -345,20 +345,20 @@ export class TradingViewService implements OnModuleDestroy {
    */
   private mapToTVInterval(interval: string): string {
     const mapping: { [key: string]: string } = {
-      '1m': '1',
-      '5m': '5',
-      '15m': '15',
-      '30m': '30',
-      '1h': '60',
-      '1H': '60',
-      '2h': '120',
-      '4h': '240',
-      '4H': '240',
-      '1d': 'D',
-      '1D': 'D',
-      '1w': 'W',
-      '1W': 'W',
-      '1M': 'M',
+      "1m": "1",
+      "5m": "5",
+      "15m": "15",
+      "30m": "30",
+      "1h": "60",
+      "1H": "60",
+      "2h": "120",
+      "4h": "240",
+      "4H": "240",
+      "1d": "D",
+      "1D": "D",
+      "1w": "W",
+      "1W": "W",
+      "1M": "M",
     };
 
     const result = mapping[interval] || interval;
@@ -375,7 +375,7 @@ export class TradingViewService implements OnModuleDestroy {
     const upperSymbol = symbol.toUpperCase();
 
     // If the symbol already contains a colon, use it as is
-    if (upperSymbol.includes(':')) {
+    if (upperSymbol.includes(":")) {
       return upperSymbol;
     }
 
@@ -416,9 +416,9 @@ export class TradingViewService implements OnModuleDestroy {
       candles,
       marketInfo: {
         description: marketInfo?.description || symbol,
-        exchange: marketInfo?.exchange || '',
-        currency: marketInfo?.currency_code || '',
-        type: marketInfo?.type || '',
+        exchange: marketInfo?.exchange || "",
+        currency: marketInfo?.currency_code || "",
+        type: marketInfo?.type || "",
       },
       lastUpdated: new Date().toISOString(),
     };
@@ -469,7 +469,7 @@ export class TradingViewService implements OnModuleDestroy {
    */
   async onModuleDestroy(): Promise<void> {
     this.logger.log(
-      'TradingViewService is being destroyed, cleaning up resources...',
+      "TradingViewService is being destroyed, cleaning up resources...",
     );
 
     // Clean up all chart sessions
@@ -491,7 +491,7 @@ export class TradingViewService implements OnModuleDestroy {
     if (this.client) {
       try {
         await this.client.end();
-        this.logger.log('TradingView client connection closed successfully');
+        this.logger.log("TradingView client connection closed successfully");
       } catch (error) {
         this.logger.error(
           `Error closing TradingView client connection: ${error.message}`,
@@ -500,6 +500,6 @@ export class TradingViewService implements OnModuleDestroy {
       }
     }
 
-    this.logger.log('TradingViewService cleanup completed');
+    this.logger.log("TradingViewService cleanup completed");
   }
 }

@@ -1,8 +1,8 @@
-import { Controller, Get, Query, Param } from '@nestjs/common';
-import { TradingViewService } from '../services/tradingview.service';
-import { console } from 'inspector';
+import { Controller, Get, Query, Param } from "@nestjs/common";
+import { TradingViewService } from "../services/tradingview.service";
+import { console } from "inspector";
 
-@Controller('v1/kline')
+@Controller("v1/kline")
 export class KlineController {
   constructor(private readonly tradingViewService: TradingViewService) {}
 
@@ -13,12 +13,12 @@ export class KlineController {
    * @param bars Number of bars/candles to fetch (default: 100)
    * @returns K-line data
    */
-  @Get(':symbol')
+  @Get(":symbol")
   async getKlineData(
-    @Param('symbol') symbol: string,
-    @Query('interval') interval: string = '1D',
-    @Query('bars') bars: string = '100',
-    @Query('from') from?: string,
+    @Param("symbol") symbol: string,
+    @Query("interval") interval: string = "1D",
+    @Query("bars") bars: string = "100",
+    @Query("from") from?: string,
   ) {
     try {
       // Get K-line data - TradingViewService will format the symbol internally
@@ -50,10 +50,10 @@ export class KlineController {
    * @param dates Array of dates in ISO format (YYYY-MM-DD)
    * @returns Price data for each requested date
    */
-  @Get(':symbol/exact-dates')
+  @Get(":symbol/exact-dates")
   async getExactDatePrices(
-    @Param('symbol') symbol: string,
-    @Query('dates') dates: string[],
+    @Param("symbol") symbol: string,
+    @Query("dates") dates: string[],
   ) {
     try {
       // console.log(`Received exact-dates request for symbol: ${symbol}, dates:`, dates);
@@ -61,7 +61,7 @@ export class KlineController {
       if (!dates || !Array.isArray(dates) || dates.length === 0) {
         return {
           success: false,
-          error: 'No dates provided or invalid dates format',
+          error: "No dates provided or invalid dates format",
           timestamp: new Date().toISOString(),
         };
       }
@@ -76,7 +76,7 @@ export class KlineController {
             console.error(`Invalid date format: ${date}`);
             return null;
           }
-          return parsedDate.toISOString().split('T')[0]; // 标准化为 YYYY-MM-DD 格式
+          return parsedDate.toISOString().split("T")[0]; // 标准化为 YYYY-MM-DD 格式
         })
         .filter((date) => date !== null);
 
@@ -84,7 +84,7 @@ export class KlineController {
       if (formattedDates.length === 0) {
         return {
           success: false,
-          error: 'All provided dates are invalid',
+          error: "All provided dates are invalid",
           timestamp: new Date().toISOString(),
         };
       }
@@ -132,7 +132,7 @@ export class KlineController {
           // 获取当前批次的数据
           const batchData = await this.tradingViewService.getKlineData(
             symbol,
-            '1D', // 始终使用日线数据
+            "1D", // 始终使用日线数据
             currentBatchDays,
             currentFromTimestamp,
           );
@@ -163,7 +163,7 @@ export class KlineController {
         // 一次性获取所有数据
         data = await this.tradingViewService.getKlineData(
           symbol,
-          '1D', // 始终使用日线数据
+          "1D", // 始终使用日线数据
           daysDiff, // 添加额外缓冲以确保获取所有需要的日期
           fromTimestamp,
         );
@@ -173,7 +173,7 @@ export class KlineController {
         // 创建包含请求的确切日期的结果数组
         const candles = data.candles;
         const result = formattedDates.map((date) => {
-          const candle = candles.find((c) => c.datetime.split('T')[0] === date);
+          const candle = candles.find((c) => c.datetime.split("T")[0] === date);
           // 如果没有则循环向前推，直到找到价格
           if (candle === undefined) {
             for (let i = 1; i <= 30; i++) {
@@ -181,8 +181,8 @@ export class KlineController {
               prevDate.setDate(prevDate.getDate() - i);
               const prevCandle = candles.find(
                 (c) =>
-                  c.datetime.split('T')[0] ===
-                  prevDate.toISOString().split('T')[0],
+                  c.datetime.split("T")[0] ===
+                  prevDate.toISOString().split("T")[0],
               );
               if (prevCandle !== undefined) {
                 return {
@@ -206,7 +206,7 @@ export class KlineController {
         console.log(`No candles data received from TradingView`);
         return {
           success: false,
-          error: 'No candles data received from TradingView',
+          error: "No candles data received from TradingView",
           timestamp: new Date().toISOString(),
         };
       }

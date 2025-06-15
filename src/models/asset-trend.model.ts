@@ -1,5 +1,5 @@
-import { Schema, model } from 'mongoose';
-import { TrendType } from './trend-type.enum';
+import { Schema, model } from "mongoose";
+import { TrendType } from "./trend-type.enum";
 
 // 单个趋势期间的资产表现
 export interface AssetPerformance {
@@ -57,7 +57,7 @@ AssetTrendSchema.index({ assetId: 1, trendType: 1 }, { unique: true });
 
 // 创建模型
 export const AssetTrendModel = model<AssetTrend>(
-  'AssetTrend',
+  "AssetTrend",
   AssetTrendSchema,
 );
 

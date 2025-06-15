@@ -1,9 +1,9 @@
-import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
+import { Prop, Schema, SchemaFactory } from "@nestjs/mongoose";
+import { Document } from "mongoose";
 
 export type VolumeBacktestDocument = VolumeBacktest & Document;
 
-@Schema({ collection: 'volume_backtests' })
+@Schema({ collection: "volume_backtests" })
 export class VolumeBacktest {
   @Prop({ required: true })
   timestamp: Date;
@@ -49,4 +49,4 @@ export const VolumeBacktestSchema =
 // 创建索引
 VolumeBacktestSchema.index({ timestamp: 1 });
 VolumeBacktestSchema.index({ hour: 1 });
-VolumeBacktestSchema.index({ 'rankings.symbol': 1 });
+VolumeBacktestSchema.index({ "rankings.symbol": 1 });

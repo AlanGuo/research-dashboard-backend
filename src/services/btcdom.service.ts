@@ -1,8 +1,8 @@
-import { Injectable } from '@nestjs/common';
-import { ConfigService } from '../config';
-import { Client } from '@notionhq/client';
+import { Injectable } from "@nestjs/common";
+import { ConfigService } from "../config";
+import { Client } from "@notionhq/client";
 
-type SortDirection = 'ascending' | 'descending';
+type SortDirection = "ascending" | "descending";
 
 @Injectable()
 export class BtcDomService {
@@ -11,9 +11,9 @@ export class BtcDomService {
 
   constructor(private configService: ConfigService) {
     this.notionClient = new Client({
-      auth: this.configService.get<string>('notion.api_key'),
+      auth: this.configService.get<string>("notion.api_key"),
     });
-    this.databaseId = this.configService.get<string>('notion.btcdom');
+    this.databaseId = this.configService.get<string>("notion.btcdom");
   }
 
   /**
@@ -24,7 +24,7 @@ export class BtcDomService {
    */
   async getBtcDomData(
     sortField?: string,
-    direction: SortDirection = 'ascending',
+    direction: SortDirection = "ascending",
   ) {
     try {
       // Prepare query parameters
@@ -46,7 +46,7 @@ export class BtcDomService {
       const response = await this.notionClient.databases.query(queryParams);
       return this.processNotionData(response.results);
     } catch (error) {
-      console.error('Error fetching BTC Dominance data:', error);
+      console.error("Error fetching BTC Dominance data:", error);
       throw new Error(`Failed to fetch BTC Dominance data: ${error.message}`);
     }
   }
@@ -65,12 +65,12 @@ export class BtcDomService {
   private calculateTotalPnl(record: any): number | null {
     try {
       // Get required values
-      const btcCurrentPrice = parseFloat(record['BTC现价']);
-      const btcEntryPrice = parseFloat(record['BTC初始价格']);
-      const btcPosition = parseFloat(record['BTC仓位']);
-      const altCurrentBalance = parseFloat(record['ALT当前余额(U)']);
-      const altInitialBalance = parseFloat(record['ALT初始余额(U)']);
-      const altFloatingPnl = parseFloat(record['ALT浮动盈亏']);
+      const btcCurrentPrice = parseFloat(record["BTC现价"]);
+      const btcEntryPrice = parseFloat(record["BTC初始价格"]);
+      const btcPosition = parseFloat(record["BTC仓位"]);
+      const altCurrentBalance = parseFloat(record["ALT当前余额(U)"]);
+      const altInitialBalance = parseFloat(record["ALT初始余额(U)"]);
+      const altFloatingPnl = parseFloat(record["ALT浮动盈亏"]);
 
       // Validate required values
       if (
@@ -98,7 +98,7 @@ export class BtcDomService {
       // Round to 2 decimal places
       return Math.round(totalPnl * 100) / 100;
     } catch (error) {
-      console.error('Error calculating total P&L:', error);
+      console.error("Error calculating total P&L:", error);
       return null;
     }
   }
@@ -114,37 +114,37 @@ export class BtcDomService {
         const property = properties[key];
 
         switch (property.type) {
-          case 'title':
+          case "title":
             processedItem[key] = property.title
               .map((t) => t.plain_text)
-              .join('');
+              .join("");
             break;
-          case 'rich_text':
+          case "rich_text":
             processedItem[key] = property.rich_text
               .map((t) => t.plain_text)
-              .join('');
+              .join("");
             break;
-          case 'number':
+          case "number":
             processedItem[key] = property.number;
             break;
-          case 'select':
+          case "select":
             processedItem[key] = property.select?.name;
             break;
-          case 'multi_select':
+          case "multi_select":
             processedItem[key] = property.multi_select.map((s) => s.name);
             break;
-          case 'date':
+          case "date":
             processedItem[key] = property.date?.start;
             break;
-          case 'checkbox':
+          case "checkbox":
             processedItem[key] = property.checkbox;
             break;
-          case 'status':
+          case "status":
             processedItem[key] = property.status?.name;
             break;
-          case 'formula':
+          case "formula":
             // Handle formula fields (like 总盈亏)
-            if (property.formula?.type === 'number') {
+            if (property.formula?.type === "number") {
               processedItem[key] = property.formula.number;
             } else {
               processedItem[key] = null;
@@ -156,7 +156,7 @@ export class BtcDomService {
       });
 
       // Calculate and add total P&L
-      processedItem['总盈亏'] = this.calculateTotalPnl(processedItem);
+      processedItem["总盈亏"] = this.calculateTotalPnl(processedItem);
 
       return processedItem;
     });

@@ -1,8 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable } from "@nestjs/common";
 import {
   HowellLiquidityDataPoint,
   HowellLiquidityResponse,
-} from '../models/howell-liquidity.model';
+} from "../models/howell-liquidity.model";
 
 @Injectable()
 export class HowellLiquidityService {
@@ -10,112 +10,112 @@ export class HowellLiquidityService {
   private readonly liquidityData: HowellLiquidityDataPoint[] = [
     // 月度数据（已修正）
     {
-      date: '2024-01',
+      date: "2024-01",
       globalLiquidity: 170.28,
       shadowMonetaryBase: 98.62,
       collateralMultiplier: 1.73,
       isRevised: true,
     },
     {
-      date: '2024-02',
+      date: "2024-02",
       globalLiquidity: 170.32,
       shadowMonetaryBase: 98.94,
       collateralMultiplier: 1.72,
       isRevised: true,
     },
     {
-      date: '2024-03',
+      date: "2024-03",
       globalLiquidity: 169.85,
       shadowMonetaryBase: 98.64,
       collateralMultiplier: 1.72,
       isRevised: true,
     },
     {
-      date: '2024-04',
+      date: "2024-04",
       globalLiquidity: 169.13,
       shadowMonetaryBase: 98.4,
       collateralMultiplier: 1.72,
       isRevised: true,
     },
     {
-      date: '2024-05',
+      date: "2024-05",
       globalLiquidity: 170.16,
       shadowMonetaryBase: 100.0,
       collateralMultiplier: 1.7,
       isRevised: true,
     },
     {
-      date: '2024-06',
+      date: "2024-06",
       globalLiquidity: 169.86,
       shadowMonetaryBase: 99.4,
       collateralMultiplier: 1.71,
       isRevised: true,
     },
     {
-      date: '2024-07',
+      date: "2024-07",
       globalLiquidity: 171.57,
       shadowMonetaryBase: 101.9,
       collateralMultiplier: 1.68,
       isRevised: true,
     },
     {
-      date: '2024-08',
+      date: "2024-08",
       globalLiquidity: 173.94,
       shadowMonetaryBase: 105.47,
       collateralMultiplier: 1.65,
       isRevised: true,
     },
     {
-      date: '2024-09',
+      date: "2024-09",
       globalLiquidity: 175.82,
       shadowMonetaryBase: 106.99,
       collateralMultiplier: 1.64,
       isRevised: true,
     },
     {
-      date: '2024-10',
+      date: "2024-10",
       globalLiquidity: 173.83,
       shadowMonetaryBase: 104.49,
       collateralMultiplier: 1.66,
       isRevised: true,
     },
     {
-      date: '2024-11',
+      date: "2024-11",
       globalLiquidity: 172.82,
       shadowMonetaryBase: 104.04,
       collateralMultiplier: 1.66,
       isRevised: true,
     },
     {
-      date: '2024-12',
+      date: "2024-12",
       globalLiquidity: 173.07,
       shadowMonetaryBase: 102.38,
       collateralMultiplier: 1.67,
       isRevised: true,
     },
     {
-      date: '2025-01',
+      date: "2025-01",
       globalLiquidity: 172.23,
       shadowMonetaryBase: 103.85,
       collateralMultiplier: 1.66,
       isRevised: true,
     },
     {
-      date: '2025-02',
+      date: "2025-02",
       globalLiquidity: 173.5,
       shadowMonetaryBase: 105.0,
       collateralMultiplier: 1.65,
       isRevised: true,
     },
     {
-      date: '2025-03',
+      date: "2025-03",
       globalLiquidity: 175.53,
       shadowMonetaryBase: 106.05,
       collateralMultiplier: 1.66,
       isRevised: true,
     },
     {
-      date: '2025-04',
+      date: "2025-04",
       globalLiquidity: 179.14,
       shadowMonetaryBase: 108.57,
       collateralMultiplier: 1.65,
@@ -124,56 +124,56 @@ export class HowellLiquidityService {
 
     // 周度数据（可能修正）
     {
-      date: '2025-04-28',
-      rawDate: '2025-04-25',
+      date: "2025-04-28",
+      rawDate: "2025-04-25",
       globalLiquidity: 179.14,
       shadowMonetaryBase: 108.57,
       collateralMultiplier: 1.64,
       isRevised: false,
     },
     {
-      date: '2025-05-05',
-      rawDate: '2025-05-02',
+      date: "2025-05-05",
+      rawDate: "2025-05-02",
       globalLiquidity: 178.62,
       shadowMonetaryBase: 108.31,
       collateralMultiplier: 1.65,
       isRevised: false,
     },
     {
-      date: '2025-05-12',
-      rawDate: '2025-05-09',
+      date: "2025-05-12",
+      rawDate: "2025-05-09",
       globalLiquidity: 178.07,
       shadowMonetaryBase: 107.91,
       collateralMultiplier: 1.65,
       isRevised: false,
     },
     {
-      date: '2025-05-19',
-      rawDate: '2025-05-16',
+      date: "2025-05-19",
+      rawDate: "2025-05-16",
       globalLiquidity: 177.26,
       shadowMonetaryBase: 107.11,
       collateralMultiplier: 1.65,
       isRevised: false,
     },
     {
-      date: '2025-05-26',
-      rawDate: '2025-05-23',
+      date: "2025-05-26",
+      rawDate: "2025-05-23",
       globalLiquidity: 176.81,
       shadowMonetaryBase: 107.64,
       collateralMultiplier: 1.64,
       isRevised: false,
     },
     {
-      date: '2025-06-02',
-      rawDate: '2025-05-30',
+      date: "2025-06-02",
+      rawDate: "2025-05-30",
       globalLiquidity: 176.34,
       shadowMonetaryBase: 107.84,
       collateralMultiplier: 1.64,
       isRevised: false,
     },
     {
-      date: '2025-06-09',
-      rawDate: '2025-06-06',
+      date: "2025-06-09",
+      rawDate: "2025-06-06",
       globalLiquidity: 176.59,
       shadowMonetaryBase: 108.46,
       collateralMultiplier: 1.63,
@@ -276,7 +276,7 @@ export class HowellLiquidityService {
    * @param dateStr 日期字符串，格式为 YYYY-MM-DD 或 YYYY年MM月
    */
   private parseDate(dateStr: string): Date {
-    if (dateStr.includes('-')) {
+    if (dateStr.includes("-")) {
       // 处理 YYYY-MM-DD 格式
       return new Date(dateStr);
     } else {
