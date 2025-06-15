@@ -108,14 +108,14 @@ export class BinanceVolumeBacktestService {
       const totalHours = Math.ceil((endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60));
       this.logger.log(`📊 将处理 ${activeSymbols.length} 个交易对的 ${totalHours} 小时数据`);
 
-      // 4. 执行回测计算
-      const results = await this.calculateHourlyRankings(activeSymbols, startTime, endTime, params);
-
-      // 4. 保存结果到数据库
-      await this.saveBacktestResults(results);
+      // 4. 执行回测计算（已改为分批入库）
+      await this.calculateHourlyRankingsWithBatchSave(activeSymbols, startTime, endTime, params);
 
       const processingTime = Date.now() - startExecution;
       this.logger.log(`回测完成，耗时: ${processingTime}ms`);
+
+      // 查询并返回保存的结果
+      const results = await this.getBacktestResults(startTime, endTime);
 
       return {
         success: true,
@@ -188,16 +188,16 @@ export class BinanceVolumeBacktestService {
   }
 
   /**
-   * 计算指定粒度的成交量排行榜
+   * 计算指定粒度的成交量排行榜（分批入库版本）
    */
-  private async calculateHourlyRankings(
+  private async calculateHourlyRankingsWithBatchSave(
     symbols: string[],
     startTime: Date,
     endTime: Date,
     params: VolumeBacktestParamsDto
-  ): Promise<VolumeBacktest[]> {
-    const results: VolumeBacktest[] = [];
+  ): Promise<void> {
     const volumeWindows = new Map<string, VolumeWindow>();
+    let totalSaved = 0;
 
     // 设置回测粒度（可配置，默认8小时）
     const BACKTEST_GRANULARITY_HOURS = params.granularityHours || 8;
@@ -248,7 +248,8 @@ export class BinanceVolumeBacktestService {
       // 计算市场统计
       const marketStats = this.calculateMarketStats(rankings);
 
-      results.push({
+      // 创建单个周期的结果
+      const periodResult: VolumeBacktest = {
         timestamp: new Date(currentTime),
         hour: currentTime.getHours(),
         rankings,
@@ -257,18 +258,26 @@ export class BinanceVolumeBacktestService {
         activePairs: marketStats.activePairs,
         createdAt: new Date(),
         calculationDuration: Date.now() - periodStart,
-      });
+      };
+
+      // 立即保存单个周期的结果
+      try {
+        await this.saveSingleBacktestResult(periodResult);
+        totalSaved++;
+        this.logger.debug(`💾 已保存第${processedPeriods}个周期的数据到数据库`);
+      } catch (error) {
+        this.logger.error(`❌ 保存第${processedPeriods}个周期数据失败:`, error);
+        // 继续处理下一个周期，不中断整个回测
+      }
 
       // 移动到下一个周期
       currentTime.setHours(currentTime.getHours() + BACKTEST_GRANULARITY_HOURS);
     }
 
-    this.logger.log(`✅ 成交量回测完成，共处理 ${processedPeriods} 个${BACKTEST_GRANULARITY_HOURS}小时周期的数据`);
+    this.logger.log(`✅ 成交量回测完成，共处理 ${processedPeriods} 个${BACKTEST_GRANULARITY_HOURS}小时周期的数据，成功保存 ${totalSaved} 条记录`);
 
     // 最终数据完整性检查
     await this.finalDataIntegrityCheck(volumeWindows, startTime, endTime);
-
-    return results;
   }
 
   /**
@@ -530,14 +539,34 @@ export class BinanceVolumeBacktestService {
   }
 
   /**
-   * 保存回测结果到数据库
+   * 保存单个回测结果到数据库
+   */
+  private async saveSingleBacktestResult(result: VolumeBacktest): Promise<void> {
+    try {
+      const savedResult = new this.volumeBacktestModel(result);
+      await savedResult.save();
+    } catch (error) {
+      // 检查是否是重复数据错误
+      if (error.code === 11000) {
+        this.logger.warn(`⚠️ 数据已存在，跳过保存: ${result.timestamp.toISOString()}`);
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  /**
+   * 保存回测结果到数据库（批量保存，保留兼容性）
    */
   private async saveBacktestResults(results: VolumeBacktest[]): Promise<void> {
+    if (results.length === 0) return;
+    
     try {
       await this.volumeBacktestModel.insertMany(results);
-      this.logger.log(`保存了 ${results.length} 条回测记录到数据库`);
+      this.logger.log(`💾 批量保存了 ${results.length} 条回测记录到数据库`);
     } catch (error) {
-      this.logger.error('保存回测结果失败:', error);
+      this.logger.error('批量保存回测结果失败:', error);
+      throw error;
     }
   }
 
