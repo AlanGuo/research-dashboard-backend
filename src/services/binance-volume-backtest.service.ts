@@ -1151,7 +1151,7 @@ export class BinanceVolumeBacktestService {
 
       // 预加载24小时数据窗口
       const windowStart = new Date(currentTime.getTime() - 24 * 60 * 60 * 1000);
-      await this.preloadVolumeWindowsOptimized(
+      await this.preloadVolumeWindows(
         volumeWindows,
         windowStart,
         currentTime,
@@ -1438,7 +1438,7 @@ export class BinanceVolumeBacktestService {
   /**
    * 预加载数据 - 并发优化版本
    */
-  private async preloadVolumeWindowsOptimized(
+  private async preloadVolumeWindows(
     volumeWindows: Map<string, VolumeWindow>,
     startTime: Date,
     endTime: Date,
