@@ -5,7 +5,7 @@ export type SymbolFilterCacheDocument = SymbolFilterCache & Document;
 
 @Schema({ timestamps: true })
 export class SymbolFilterCache {
-  @Prop({ required: true, unique: true })
+  @Prop({ required: true })
   filterHash: string; // 筛选条件的哈希值，用于快速查找
 
   @Prop({ type: Object, required: true })
@@ -50,8 +50,10 @@ export class SymbolFilterCache {
   hitCount: number; // 命中次数
 }
 
-export const SymbolFilterCacheSchema = SchemaFactory.createForClass(SymbolFilterCache);
+export const SymbolFilterCacheSchema =
+  SchemaFactory.createForClass(SymbolFilterCache);
 
-// 创建索引（filterHash已通过unique: true自动创建索引，无需重复定义）
+// 创建索引
+SymbolFilterCacheSchema.index({ filterHash: 1 }, { unique: true });
 SymbolFilterCacheSchema.index({ createdAt: 1 });
 SymbolFilterCacheSchema.index({ lastUsedAt: 1 });

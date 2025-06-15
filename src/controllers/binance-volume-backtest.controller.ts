@@ -1,6 +1,19 @@
-import { Controller, Post, Get, Query, Body, Logger, HttpException, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Query,
+  Body,
+  Logger,
+  HttpException,
+  HttpStatus,
+} from '@nestjs/common';
 import { BinanceVolumeBacktestService } from '../services/binance-volume-backtest.service';
-import { VolumeBacktestParamsDto, VolumeBacktestQueryDto, VolumeBacktestResponse } from '../dto/volume-backtest-params.dto';
+import {
+  VolumeBacktestParamsDto,
+  VolumeBacktestQueryDto,
+  VolumeBacktestResponse,
+} from '../dto/volume-backtest-params.dto';
 
 @Controller('/v1/binance/volume-backtest')
 export class BinanceVolumeBacktestController {
@@ -15,11 +28,13 @@ export class BinanceVolumeBacktestController {
    * POST /api/binance/volume-backtest
    */
   @Post()
-  async executeBacktest(@Body() params: VolumeBacktestParamsDto): Promise<VolumeBacktestResponse> {
+  async executeBacktest(
+    @Body() params: VolumeBacktestParamsDto,
+  ): Promise<VolumeBacktestResponse> {
     try {
       this.logger.log(`收到回测请求: ${JSON.stringify(params)}`);
       this.logger.log(`📅 回测将使用每周一重新计算的交易对列表`);
-      
+
       // 验证时间范围
       const startTime = new Date(params.startTime);
       const endTime = new Date(params.endTime);
@@ -27,19 +42,27 @@ export class BinanceVolumeBacktestController {
       const maxRecommendedDuration = 7 * 24 * 60 * 60 * 1000; // 推荐最大7天
 
       if (timeDiff <= 0) {
-        throw new HttpException('结束时间必须大于开始时间', HttpStatus.BAD_REQUEST);
+        throw new HttpException(
+          '结束时间必须大于开始时间',
+          HttpStatus.BAD_REQUEST,
+        );
       }
 
       // 如果超过推荐时间，添加警告日志
       if (timeDiff > maxRecommendedDuration) {
         const durationDays = Math.ceil(timeDiff / (24 * 60 * 60 * 1000));
         const weekCount = Math.ceil(durationDays / 7);
-        this.logger.warn(`⚠️ 回测时间范围较长 (${durationDays} 天, 跨越 ${weekCount} 周)，可能需要较长处理时间和更多API调用`);
-        this.logger.warn(`   建议分批执行或使用更大的granularityHours来减少计算量`);
+        this.logger.warn(
+          `⚠️ 回测时间范围较长 (${durationDays} 天, 跨越 ${weekCount} 周)，可能需要较长处理时间和更多API调用`,
+        );
+        this.logger.warn(
+          `   建议分批执行或使用更大的granularityHours来减少计算量`,
+        );
         this.logger.warn(`   系统将为每周单独计算符合条件的交易对列表`);
       }
 
-      const result = await this.volumeBacktestService.executeVolumeBacktest(params);
+      const result =
+        await this.volumeBacktestService.executeVolumeBacktest(params);
       return result;
     } catch (error) {
       this.logger.error('执行回测失败:', error);
@@ -69,7 +92,10 @@ export class BinanceVolumeBacktestController {
       if (query.hour !== undefined) {
         // 查询特定小时的数据
         if (!startTime) {
-          throw new HttpException('查询特定小时需要提供日期参数', HttpStatus.BAD_REQUEST);
+          throw new HttpException(
+            '查询特定小时需要提供日期参数',
+            HttpStatus.BAD_REQUEST,
+          );
         }
         startTime.setHours(query.hour, 0, 0, 0);
         endTime = new Date(startTime.getTime() + 60 * 60 * 1000);
@@ -83,10 +109,12 @@ export class BinanceVolumeBacktestController {
 
       return {
         success: true,
-        data: results.map(result => ({
+        data: results.map((result) => ({
           timestamp: result.timestamp.toISOString(),
           hour: result.hour,
-          rankings: query.limit ? result.rankings.slice(0, query.limit) : result.rankings,
+          rankings: query.limit
+            ? result.rankings.slice(0, query.limit)
+            : result.rankings,
           marketStats: {
             totalVolume: result.totalMarketVolume,
             totalQuoteVolume: result.totalMarketQuoteVolume,
@@ -133,9 +161,9 @@ export class BinanceVolumeBacktestController {
   async testBinanceConnection() {
     try {
       this.logger.log('测试Binance API连通性...');
-      
+
       const result = await this.volumeBacktestService.testBinanceApi();
-      
+
       return {
         success: true,
         message: 'Binance API连通测试成功',
@@ -166,10 +194,26 @@ export class BinanceVolumeBacktestController {
       // 这里可以调用币安API获取最新的交易对列表
       // 为了演示，返回一些常见的交易对
       const commonSymbols = [
-        'BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'ADAUSDT', 'XRPUSDT',
-        'SOLUSDT', 'DOTUSDT', 'DOGEUSDT', 'AVAXUSDT', 'SHIBUSDT',
-        'MATICUSDT', 'LTCUSDT', 'TRXUSDT', 'LINKUSDT', 'ATOMUSDT',
-        'ETCUSDT', 'XLMUSDT', 'BCHUSDT', 'FILUSDT', 'VETUSDT',
+        'BTCUSDT',
+        'ETHUSDT',
+        'BNBUSDT',
+        'ADAUSDT',
+        'XRPUSDT',
+        'SOLUSDT',
+        'DOTUSDT',
+        'DOGEUSDT',
+        'AVAXUSDT',
+        'SHIBUSDT',
+        'MATICUSDT',
+        'LTCUSDT',
+        'TRXUSDT',
+        'LINKUSDT',
+        'ATOMUSDT',
+        'ETCUSDT',
+        'XLMUSDT',
+        'BCHUSDT',
+        'FILUSDT',
+        'VETUSDT',
       ];
 
       return {
@@ -182,7 +226,10 @@ export class BinanceVolumeBacktestController {
       };
     } catch (error) {
       this.logger.error('获取交易对列表失败:', error);
-      throw new HttpException('获取交易对列表失败', HttpStatus.INTERNAL_SERVER_ERROR);
+      throw new HttpException(
+        '获取交易对列表失败',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 

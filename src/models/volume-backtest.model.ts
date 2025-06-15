@@ -43,7 +43,8 @@ export interface HourlyVolumeRankingItem {
   volumeChangePercent: number; // 成交量变化百分比
 }
 
-export const VolumeBacktestSchema = SchemaFactory.createForClass(VolumeBacktest);
+export const VolumeBacktestSchema =
+  SchemaFactory.createForClass(VolumeBacktest);
 
 // 创建索引
 VolumeBacktestSchema.index({ timestamp: 1 });

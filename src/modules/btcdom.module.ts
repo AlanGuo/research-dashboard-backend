@@ -9,5 +9,4 @@ import { ConfigModule } from '../config';
   providers: [BtcDomService],
   exports: [BtcDomService],
 })
-export class BtcDomModule {
-}
+export class BtcDomModule {}
