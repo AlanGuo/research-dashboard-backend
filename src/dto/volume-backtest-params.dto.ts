@@ -1,4 +1,12 @@
-import { IsOptional, IsString, IsNumber, IsArray, IsDateString, Min, Max } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsNumber,
+  IsArray,
+  IsDateString,
+  Min,
+  Max,
+} from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class VolumeBacktestParamsDto {
@@ -101,12 +109,19 @@ export interface VolumeBacktestResponse {
     totalHours: number;
     dataPoints: number;
     processingTime: number;
+    weeklyCalculations?: number;
     symbolStats?: {
       totalDiscovered: number;
       validSymbols: number;
       invalidSymbols: number;
       validRate: string;
-      sampleInvalidSymbols: string[];
+      weeklyBreakdown?: {
+        weekStart: string;
+        validSymbols: number;
+        invalidSymbols: number;
+        validRate: string;
+        sampleSymbols: string[];
+      }[];
       filterCriteria: {
         minHistoryDays: number;
         requireFutures: boolean;

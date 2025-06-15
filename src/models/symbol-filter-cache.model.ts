@@ -52,7 +52,6 @@ export class SymbolFilterCache {
 
 export const SymbolFilterCacheSchema = SchemaFactory.createForClass(SymbolFilterCache);
 
-// 创建索引
-SymbolFilterCacheSchema.index({ filterHash: 1 });
+// 创建索引（filterHash已通过unique: true自动创建索引，无需重复定义）
 SymbolFilterCacheSchema.index({ createdAt: 1 });
 SymbolFilterCacheSchema.index({ lastUsedAt: 1 });
