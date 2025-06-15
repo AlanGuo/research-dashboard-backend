@@ -43,6 +43,21 @@ interface VolumeWindow {
 export class BinanceVolumeBacktestService {
   private readonly logger = new Logger(BinanceVolumeBacktestService.name);
 
+  // 统一的并发和批次配置
+  private readonly CONCURRENCY_CONFIG = {
+    // K线数据加载配置 (数据预加载、滑动窗口更新、单个时间点计算统一使用)
+    // 原因: 都是相同的K线数据加载操作，对API的压力和网络要求相同
+    KLINE_LOADING: {
+      maxConcurrency: 12,  // 较高并发，提升数据加载效率
+      batchSize: 40,       // 较大批次，减少网络往返次数
+    },
+    // 通用批量处理配置 (用于其他场景)
+    GENERAL: {
+      maxConcurrency: 10,  // 平衡的并发数
+      batchSize: 30,       // 平衡的批次大小
+    },
+  };
+
   // 常见稳定币列表（基础资产）
   private readonly STABLECOINS = [
     "USDT",
@@ -414,7 +429,7 @@ export class BinanceVolumeBacktestService {
       processor,
       {
         initialConcurrency: 8,
-        maxConcurrency: 15,
+        maxConcurrency: this.CONCURRENCY_CONFIG.KLINE_LOADING.maxConcurrency,
         adaptiveThrottling: true,
         retryFailedItems: true,
         maxRetries: 3,
@@ -818,8 +833,8 @@ export class BinanceVolumeBacktestService {
       startTime,
       endTime,
       {
-        maxConcurrency: 12, // 增加并发数
-        batchSize: 40, // 优化批次大小
+        maxConcurrency: this.CONCURRENCY_CONFIG.KLINE_LOADING.maxConcurrency,
+        batchSize: this.CONCURRENCY_CONFIG.KLINE_LOADING.batchSize,
       },
     );
 
@@ -1675,8 +1690,8 @@ export class BinanceVolumeBacktestService {
         windowStart,
         currentTime,
         {
-          maxConcurrency: 8,
-          batchSize: 20,
+          maxConcurrency: this.CONCURRENCY_CONFIG.KLINE_LOADING.maxConcurrency,
+          batchSize: this.CONCURRENCY_CONFIG.KLINE_LOADING.batchSize,
         },
       );
 
@@ -1775,7 +1790,7 @@ export class BinanceVolumeBacktestService {
   ): Promise<{ results: Map<T, R>; errors: Map<T, Error>; stats: any }> {
     const {
       initialConcurrency = 5,
-      maxConcurrency = 20,
+      maxConcurrency = this.CONCURRENCY_CONFIG.GENERAL.maxConcurrency * 2, // 通用最大并发的2倍
       minConcurrency = 1,
       adaptiveThrottling = true,
       retryFailedItems = true,
@@ -1927,7 +1942,7 @@ export class BinanceVolumeBacktestService {
     } = {},
   ): Promise<Map<string, KlineData[] | null>> {
     const {
-      maxConcurrency = 10,
+      maxConcurrency = this.CONCURRENCY_CONFIG.GENERAL.maxConcurrency,
       enableAdaptiveThrottling = true,
       retryFailed = true,
     } = options;
@@ -2001,7 +2016,10 @@ export class BinanceVolumeBacktestService {
       batchSize?: number;
     } = {},
   ): Promise<void> {
-    const { maxConcurrency = 8, batchSize = 50 } = options;
+    const { 
+      maxConcurrency = this.CONCURRENCY_CONFIG.GENERAL.maxConcurrency, 
+      batchSize = this.CONCURRENCY_CONFIG.GENERAL.batchSize 
+    } = options;
     const symbols = Array.from(volumeWindows.keys());
 
     this.logger.log(`🔄 开始并发预加载 ${symbols.length} 个交易对的数据窗口`);
