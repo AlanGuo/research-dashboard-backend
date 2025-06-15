@@ -18,7 +18,6 @@ import {
 import { ConfigService } from "../config/config.service";
 import { BinanceService } from "./binance.service";
 
-
 interface KlineData {
   openTime: number;
   open: string;
@@ -297,8 +296,6 @@ export class BinanceVolumeBacktestService {
     }
   }
 
-
-
   /**
    * 计算预估完成时间
    */
@@ -460,18 +457,8 @@ export class BinanceVolumeBacktestService {
 
     const successRate = ((successCount / symbols.length) * 100).toFixed(1);
     this.logger.log(
-      `📊 优化滑动窗口更新完成: 成功 ${successCount}/${symbols.length} (${successRate}%), 失败 ${failureCount}`,
+      `📊 滑动窗口更新完成: 成功 ${successCount}/${symbols.length} (${successRate}%)${failureCount > 0 ? `, 失败 ${failureCount}` : ""}`,
     );
-    this.logger.log(
-      `   处理统计: 耗时 ${stats.totalTime}ms, 平均响应 ${stats.avgResponseTime.toFixed(0)}ms, 并发调整 ${stats.concurrencyAdjustments} 次`,
-    );
-
-    // 显示成功的币种详情（限制数量）
-    if (successSymbols.length > 0) {
-      this.logger.debug(
-        `✅ 成功更新的币种: ${successSymbols.slice(0, 10).join(", ")}${successSymbols.length > 10 ? `... (共${successSymbols.length}个)` : ""}`,
-      );
-    }
 
     // 显示失败的币种
     if (failedSymbols.length > 0) {
@@ -764,11 +751,6 @@ export class BinanceVolumeBacktestService {
   }
 
   /**
-   * 保存回测结果到数据库（批量保存，保留兼容性）
-   */
-
-
-  /**
    * 查询历史回测数据
    */
   async getBacktestResults(
@@ -820,14 +802,15 @@ export class BinanceVolumeBacktestService {
     startTime: Date,
     endTime: Date,
   ): Promise<void> {
-    this.logger.log("📊 开始优化并发预加载初始数据窗口（自适应重试机制）...");
+    this.logger.log("📊 预加载初始数据窗口...");
 
     const symbols = Array.from(volumeWindows.keys());
     const timeRange = `${startTime.toISOString().slice(0, 16)} - ${endTime.toISOString().slice(0, 16)}`;
 
-    this.logger.log(
-      `📦 需要处理 ${symbols.length} 个交易对的数据 (${timeRange})`,
-    );
+    const symbolsInfo = symbols.length <= 10 ? 
+      `[${symbols.join(", ")}]` : 
+      `[${symbols.slice(0, 5).join(", ")}, ...+${symbols.length - 5}个]`;
+    this.logger.log(`📦 预加载 ${symbolsInfo} (${timeRange})`);
 
     // 使用优化的并发预加载
     await this.preloadVolumeWindowsOptimized(
@@ -858,15 +841,8 @@ export class BinanceVolumeBacktestService {
 
     const successRate = ((successCount / symbols.length) * 100).toFixed(1);
     this.logger.log(
-      `📊 优化预加载完成: 成功 ${successCount}/${symbols.length} (${successRate}%), 失败 ${failureCount}`,
+      `📊 预加载完成: 成功 ${successCount}/${symbols.length} (${successRate}%)${failureCount > 0 ? `, 失败 ${failureCount}` : ""}`,
     );
-
-    // 显示成功的币种详情（限制数量）
-    if (successSymbols.length > 0) {
-      this.logger.debug(
-        `✅ 成功预加载的币种: ${successSymbols.slice(0, 10).join(", ")}${successSymbols.length > 10 ? `... (共${successSymbols.length}个)` : ""}`,
-      );
-    }
 
     // 显示失败的币种并进行重试
     if (failedSymbols.length > 0) {
@@ -888,17 +864,12 @@ export class BinanceVolumeBacktestService {
       }
     }
 
-    // 记录最终统计信息
-    this.logDataStatistics(volumeWindows, "预加载完成后");
-
     const stats = this.calculateDataSuccessRate(volumeWindows);
     const successRateNum = parseFloat(stats.successRate.replace("%", ""));
     if (successRateNum < 85) {
       this.logger.warn(
         `⚠️ 数据获取成功率较低 (${stats.successRate})，可能影响回测准确性`,
       );
-    } else {
-      this.logger.log(`✅ 数据质量良好 (${stats.successRate} 成功率)`);
     }
   }
 
@@ -913,9 +884,10 @@ export class BinanceVolumeBacktestService {
   ): Promise<void> {
     if (failedSymbols.length === 0) return;
 
-    this.logger.log(
-      `🔄 开始单独重试 ${failedSymbols.length} 个失败的交易对...`,
-    );
+    const retryInfo = failedSymbols.length <= 10 ? 
+      `[${failedSymbols.join(", ")}]` : 
+      `[${failedSymbols.slice(0, 5).join(", ")}, ...+${failedSymbols.length - 5}个]`;
+    this.logger.log(`🔄 重试失败的交易对 ${retryInfo}`);
 
     let retrySuccessCount = 0;
     const stillFailedSymbols: string[] = [];
@@ -1402,7 +1374,7 @@ export class BinanceVolumeBacktestService {
     const referenceTime = params.referenceTime || new Date();
 
     this.logger.log(
-      `🚀 并发筛选启动: ${symbols.length} 个交易对 | 并发数: ${concurrency} | 历史要求: ${minHistoryDays}天`,
+      `🚀 筛选交易对: ${symbols.length} 个 | 最少历史: ${minHistoryDays}天${requireFutures ? " | 需要期货合约" : ""}${excludeStablecoins ? " | 排除稳定币" : ""}`,
     );
 
     const validSymbols: string[] = [];
@@ -1426,7 +1398,7 @@ export class BinanceVolumeBacktestService {
         const withFutures =
           Object.values(futuresAvailability).filter(Boolean).length;
         this.logger.log(
-          `� 期货检查完成: ${withFutures}/${symbols.length} 个有永续合约`,
+          `📅 期货检查完成: ${withFutures}/${symbols.length} 个有永续合约`,
         );
       } catch (error) {
         this.logger.error(`期货检查失败: ${error.message}`);
@@ -1474,23 +1446,17 @@ export class BinanceVolumeBacktestService {
         results.set(symbol, { valid: isValid, reasons });
         processedCount.value++;
 
-        // 简化进度日志 - 每25个输出一次
+        // 简化进度日志 - 每50个输出一次
         if (
-          processedCount.value % 25 === 0 ||
+          processedCount.value % 50 === 0 ||
           processedCount.value === symbols.length
         ) {
           const progress = (
             (processedCount.value / symbols.length) *
             100
           ).toFixed(1);
-          const recentValid =
-            results.size > 0
-              ? Array.from(results.values())
-                  .slice(-25)
-                  .filter((r) => r.valid).length
-              : 0;
           this.logger.log(
-            `⏳ ${processedCount.value}/${symbols.length} (${progress}%) | 最近25个: ${recentValid}✅`,
+            `⏳ 筛选进度: ${processedCount.value}/${symbols.length} (${progress}%)`,
           );
         }
 
@@ -1534,7 +1500,7 @@ export class BinanceVolumeBacktestService {
     const avgTimePerSymbol = processingTime / symbols.length;
 
     this.logger.log(
-      `✅ 并发筛选完成: ${validSymbols.length}/${symbols.length} (${((validSymbols.length / symbols.length) * 100).toFixed(1)}%) | 耗时: ${processingTime}ms | 平均: ${avgTimePerSymbol.toFixed(0)}ms/个`,
+      `✅ 筛选完成: ${validSymbols.length}/${symbols.length} (${((validSymbols.length / symbols.length) * 100).toFixed(1)}%) 通过筛选`,
     );
 
     return {
@@ -1560,22 +1526,32 @@ export class BinanceVolumeBacktestService {
     const weeklyTimes: Date[] = [];
     const current = new Date(startTime.getTime());
 
-    // 找到第一个周一
+    // 找到startTime对应或之前的最近周一0点(UTC)
     while (current.getDay() !== 1) {
       current.setDate(current.getDate() - 1);
     }
+    // 设置为周一0点
+    current.setHours(0, 0, 0, 0);
 
-    // 从第一个周一开始，每周添加一个时间点
+    this.logger.log(
+      `📅 从 ${current.toISOString().slice(0, 10)} 开始计算周一时间点`,
+    );
+
+    // 从找到的周一开始，每周添加一个时间点，直到超过endTime
     while (current <= endTime) {
       weeklyTimes.push(new Date(current));
       current.setDate(current.getDate() + 7); // 加7天到下一个周一
     }
 
+    this.logger.log(
+      `📊 共计算出 ${weeklyTimes.length} 个周一时间点: ${weeklyTimes.map((d) => d.toISOString().slice(0, 10)).join(", ")}`,
+    );
+
     return weeklyTimes;
   }
 
   /**
-   * 使用周期性symbols计算每小时排行榜
+   * 使用周期性Symbols排行榜计算指定粒度的排行榜（默认8小时）
    */
   private async calculateHourlyRankingsWithWeeklySymbols(
     weeklySymbolsMap: Map<string, string[]>,
@@ -1583,30 +1559,167 @@ export class BinanceVolumeBacktestService {
     endTime: Date,
     params: VolumeBacktestParamsDto,
   ): Promise<void> {
-    const granularityMs = (params.granularityHours || 1) * 60 * 60 * 1000;
+    const granularityMs = (params.granularityHours || 8) * 60 * 60 * 1000;
     const currentTime = new Date(startTime.getTime());
+    let processedCount = 0;
+    const totalPeriods = Math.ceil(
+      (endTime.getTime() - startTime.getTime()) / granularityMs,
+    );
+
+    this.logger.log(
+      `🚀 开始周期性Symbols排行榜计算，共 ${totalPeriods} 个时间点，粒度 ${params.granularityHours || 8} 小时`,
+    );
 
     while (currentTime < endTime) {
-      // 找到当前时间对应的周一
-      const weekStart = new Date(currentTime.getTime());
-      while (weekStart.getDay() !== 1) {
-        weekStart.setDate(weekStart.getDate() - 1);
-      }
-      weekStart.setHours(0, 0, 0, 0);
+      try {
+        // 找到当前时间对应的周一0点
+        const weekStart = this.findMondayForTime(currentTime);
+        const weekKey = weekStart.toISOString().slice(0, 10);
+        const symbols = weeklySymbolsMap.get(weekKey) || [];
 
-      const weekKey = weekStart.toISOString().slice(0, 10);
-      const symbols = weeklySymbolsMap.get(weekKey) || [];
+        if (symbols.length === 0) {
+          this.logger.warn(
+            `⚠️ 时间点 ${currentTime.toISOString()} 对应的周一 ${weekKey} 没有找到符合条件的交易对，跳过`,
+          );
+          currentTime.setTime(currentTime.getTime() + granularityMs);
+          continue;
+        }
 
-      if (symbols.length > 0) {
-        // 使用简化的单周期计算逻辑，而不是批量处理
-        this.logger.log(`📊 为周期 ${currentTime.toISOString()} 计算 ${symbols.length} 个交易对的排行榜`);
-        
-        // 这里应该调用新的单周期计算方法
-        // TODO: 实现单周期计算逻辑
-        this.logger.warn(`⚠️ 周期性计算功能正在重构中，跳过此周期`);
+        // 计算该时间点的排行榜
+        await this.calculateSinglePeriodRanking(
+          currentTime,
+          symbols,
+          params,
+          weekKey,
+        );
+
+        processedCount++;
+
+        // 每处理10个时间点输出一次进度
+        if (processedCount % 10 === 0) {
+          const progress = ((processedCount / totalPeriods) * 100).toFixed(1);
+          this.logger.log(
+            `📈 进度: ${processedCount}/${totalPeriods} (${progress}%)`,
+          );
+        }
+      } catch (error) {
+        this.logger.error(
+          `❌ 计算时间点 ${currentTime.toISOString()} 的排行榜失败:`,
+          error,
+        );
+        // 继续处理下一个时间点
       }
 
       currentTime.setTime(currentTime.getTime() + granularityMs);
+    }
+
+    this.logger.log(
+      `✅ 周期性symbols计算完成，共处理 ${processedCount}/${totalPeriods} 个时间点`,
+    );
+  }
+
+  /**
+   * 找到指定时间对应的周一0点(UTC)
+   */
+  private findMondayForTime(time: Date): Date {
+    const monday = new Date(time.getTime());
+
+    // 向前找到周一
+    while (monday.getDay() !== 1) {
+      monday.setDate(monday.getDate() - 1);
+    }
+
+    // 设置为0点
+    monday.setHours(0, 0, 0, 0);
+
+    return monday;
+  }
+
+  /**
+   * 计算单个时间点的排行榜
+   */
+  private async calculateSinglePeriodRanking(
+    currentTime: Date,
+    symbols: string[],
+    params: VolumeBacktestParamsDto,
+    weekKey: string,
+  ): Promise<void> {
+    const periodStart = Date.now();
+
+    // 显示当前计算的交易对信息
+    const symbolsInfo = symbols.length <= 15 ? 
+      `[${symbols.join(", ")}]` : 
+      `[${symbols.slice(0, 8).join(", ")}, ...+${symbols.length - 8}个]`;
+    this.logger.log(
+      `📊 计算 ${currentTime.toISOString()} 排行榜: ${symbolsInfo}`,
+    );
+
+    try {
+      // 创建临时的滑动窗口
+      const volumeWindows = new Map<string, VolumeWindow>();
+
+      // 初始化每个交易对的窗口
+      for (const symbol of symbols) {
+        volumeWindows.set(symbol, {
+          symbol,
+          data: [],
+          volume24h: 0,
+          quoteVolume24h: 0,
+        });
+      }
+
+      // 预加载24小时数据窗口
+      const windowStart = new Date(currentTime.getTime() - 24 * 60 * 60 * 1000);
+      await this.preloadVolumeWindowsOptimized(
+        volumeWindows,
+        windowStart,
+        currentTime,
+        {
+          maxConcurrency: 8,
+          batchSize: 20,
+        },
+      );
+
+      // 计算排行榜
+      const rankings = this.calculateRankings(
+        volumeWindows,
+        params.limit || 50,
+        params.minVolumeThreshold || 0,
+      );
+
+      // 计算市场统计
+      const marketStats = this.calculateMarketStats(rankings);
+
+      // 保存结果
+      if (rankings.length > 0) {
+        await this.saveSingleBacktestResult({
+          timestamp: currentTime,
+          hour: currentTime.getHours(),
+          rankings,
+          totalMarketVolume: marketStats.totalVolume,
+          totalMarketQuoteVolume: marketStats.totalQuoteVolume,
+          activePairs: marketStats.activePairs,
+          calculationDuration: Date.now() - periodStart,
+          createdAt: new Date(),
+        });
+
+        this.logger.log(
+          `💾 ${currentTime.toISOString()} 排行榜已保存: 前3名 ${rankings
+            .slice(0, 3)
+            .map((r) => r.symbol)
+            .join(", ")}`,
+        );
+      } else {
+        this.logger.warn(
+          `⚠️ ${currentTime.toISOString()} 没有生成有效的排行榜数据`,
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        `❌ 计算时间点 ${currentTime.toISOString()} 排行榜失败:`,
+        error,
+      );
+      throw error;
     }
   }
 
@@ -1709,14 +1822,10 @@ export class BinanceVolumeBacktestService {
 
         if (retryFailedItems && attempt < maxRetries) {
           metrics.retried++;
-          this.logger.warn(
-            `⚠️ 项目处理失败，正在重试 (${attempt}/${maxRetries}): ${error.message}`,
-          );
           await this.delay(Math.pow(2, attempt) * 1000); // 指数退避
           return processItem(item, attempt + 1);
         } else {
           errors.set(item, error as Error);
-          this.logger.error(`❌ 项目处理最终失败: ${error.message}`);
         }
       }
     };
@@ -1744,9 +1853,6 @@ export class BinanceVolumeBacktestService {
               Math.floor(currentConcurrency * 0.8),
             );
             metrics.concurrencyAdjustments++;
-            this.logger.log(
-              `⬇️ 降低并发数至 ${currentConcurrency} (响应时间: ${avgResponseTime.toFixed(0)}ms, 错误率: ${(recentErrorRate * 100).toFixed(1)}%)`,
-            );
           }
         }
         // 如果性能良好，适度增加并发数
@@ -1757,7 +1863,6 @@ export class BinanceVolumeBacktestService {
         ) {
           currentConcurrency = Math.min(maxConcurrency, currentConcurrency + 1);
           metrics.concurrencyAdjustments++;
-          this.logger.log(`⬆️ 增加并发数至 ${currentConcurrency} (性能良好)`);
         }
       }
     };
@@ -1801,11 +1906,8 @@ export class BinanceVolumeBacktestService {
         : 0;
     metrics.currentConcurrency = currentConcurrency;
 
-    this.logger.log(
-      `🎯 并发处理完成: ${metrics.processed}/${items.length} 成功, ${metrics.failed} 失败, ${metrics.retried} 重试`,
-    );
-    this.logger.log(
-      `   总耗时: ${metrics.totalTime}ms, 平均响应: ${metrics.avgResponseTime.toFixed(0)}ms, 最终并发数: ${currentConcurrency}`,
+    this.logger.debug(
+      `✅ 处理完成: ${metrics.processed}/${items.length} 成功${metrics.failed > 0 ? `, ${metrics.failed} 失败` : ""}`,
     );
 
     return { results, errors, stats: metrics };
@@ -1830,7 +1932,10 @@ export class BinanceVolumeBacktestService {
       retryFailed = true,
     } = options;
 
-    this.logger.log(`🚀 开始优化批量加载 ${symbols.length} 个交易对的K线数据`);
+    const symbolInfo = symbols.length <= 10 ? 
+      `[${symbols.join(", ")}]` : 
+      `[${symbols.slice(0, 5).join(", ")}, ...+${symbols.length - 5}个]`;
+    this.logger.log(`📊 加载K线数据 ${symbolInfo}`);
 
     const processor = async (symbol: string): Promise<KlineData[] | null> => {
       try {
@@ -1870,9 +1975,16 @@ export class BinanceVolumeBacktestService {
     const successCount = Array.from(finalResults.values()).filter(
       (data) => data !== null,
     ).length;
-    this.logger.log(
-      `✅ 批量加载完成: ${successCount}/${symbols.length} 个交易对成功`,
-    );
+    const failedSymbols = symbols.filter(symbol => finalResults.get(symbol) === null);
+    
+    if (failedSymbols.length === 0) {
+      this.logger.log(`✅ 全部成功: ${successCount}/${symbols.length}`);
+    } else {
+      const failedInfo = failedSymbols.length <= 3 ? 
+        `[${failedSymbols.join(", ")}]` : 
+        `[${failedSymbols.slice(0, 2).join(", ")}, ...${failedSymbols.length - 2}个]`;
+      this.logger.log(`⚠️ 部分失败: ${successCount}/${symbols.length} 成功, 失败 ${failedInfo}`);
+    }
 
     return finalResults;
   }
@@ -1897,8 +2009,11 @@ export class BinanceVolumeBacktestService {
     // 分批处理以避免内存压力
     for (let i = 0; i < symbols.length; i += batchSize) {
       const batch = symbols.slice(i, i + batchSize);
+      const batchInfo = batch.length <= 5 ? 
+        `[${batch.join(", ")}]` : 
+        `[${batch.slice(0, 3).join(", ")}, ...${batch.length - 3}个]`;
       this.logger.log(
-        `   处理批次 ${Math.floor(i / batchSize) + 1}/${Math.ceil(symbols.length / batchSize)}: ${batch.length} 个交易对`,
+        `   📦 批次 ${Math.floor(i / batchSize) + 1}/${Math.ceil(symbols.length / batchSize)}: 加载 ${batchInfo}`,
       );
 
       const klineResults = await this.loadKlinesBatchOptimized(
