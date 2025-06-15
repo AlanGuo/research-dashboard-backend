@@ -616,6 +616,7 @@ export class BinanceVolumeBacktestService {
     let successCount = 0;
     let failureCount = 0;
     const failedSymbols: string[] = [];
+    const successSymbols: string[] = [];
     
     for (const [symbol, klines] of klinesResults) {
       const window = volumeWindows.get(symbol);
@@ -624,16 +625,25 @@ export class BinanceVolumeBacktestService {
         window.data = klines;
         this.updateWindowVolume(window);
         successCount++;
-        this.logger.debug(`✅ ${symbol}: 预加载了 ${klines.length} 条K线数据`);
+        successSymbols.push(symbol);
       } else if (window) {
         failedSymbols.push(symbol);
         failureCount++;
-        this.logger.warn(`⚠️ ${symbol}: 预加载数据为空或失败`);
       }
     }
     
     const successRate = ((successCount / symbols.length) * 100).toFixed(1);
     this.logger.log(`📊 预加载完成: 成功 ${successCount}/${symbols.length} (${successRate}%), 失败 ${failureCount}`);
+    
+    // 只在调试模式下显示成功的币种详情
+    if (successSymbols.length > 0) {
+      this.logger.debug(`✅ 成功预加载的币种: ${successSymbols.slice(0, 10).join(', ')}${successSymbols.length > 10 ? `... (共${successSymbols.length}个)` : ''}`);
+    }
+    
+    // 显示失败的币种
+    if (failedSymbols.length > 0) {
+      this.logger.warn(`❌ 预加载失败的币种: ${failedSymbols.slice(0, 10).join(', ')}${failedSymbols.length > 10 ? `... (共${failedSymbols.length}个)` : ''}`);
+    }
     
     // 如果有失败的，可以选择性重试
     if (failedSymbols.length > 0 && failedSymbols.length < symbols.length * 0.2) {
@@ -678,11 +688,9 @@ export class BinanceVolumeBacktestService {
             window.data = result.data;
             this.updateWindowVolume(window);
             retrySuccessCount++;
-            this.logger.debug(`✅ ${symbol}: 重试成功，获得 ${result.data.length} 条数据`);
           }
         } else {
           stillFailedSymbols.push(symbol);
-          this.logger.warn(`❌ ${symbol}: 重试仍然失败 - ${result.error}`);
         }
         
         // 重试时使用更长的延迟
@@ -695,10 +703,10 @@ export class BinanceVolumeBacktestService {
     }
     
     const retrySuccessRate = ((retrySuccessCount / failedSymbols.length) * 100).toFixed(1);
-    this.logger.log(`📊 重试完成: 成功 ${retrySuccessCount}/${failedSymbols.length} (${retrySuccessRate}%)`);
+    this.logger.log(`📊 预加载重试完成: 成功 ${retrySuccessCount}/${failedSymbols.length} (${retrySuccessRate}%)`);
     
     if (stillFailedSymbols.length > 0) {
-      this.logger.warn(`⚠️ 仍有 ${stillFailedSymbols.length} 个交易对无法获取数据: ${stillFailedSymbols.slice(0, 5).join(', ')}${stillFailedSymbols.length > 5 ? '...' : ''}`);
+      this.logger.warn(`⚠️ 仍有 ${stillFailedSymbols.length} 个交易对无法获取预加载数据: ${stillFailedSymbols.slice(0, 5).join(', ')}${stillFailedSymbols.length > 5 ? '...' : ''}`);
     }
   }
 
