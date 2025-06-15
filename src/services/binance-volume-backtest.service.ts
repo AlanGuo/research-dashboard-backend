@@ -2056,6 +2056,6 @@ export class BinanceVolumeBacktestService {
       }
     }
 
-    this.logger.log(`✅ 预加载完成: ${symbols.length} 个数据窗口已初始化`);
+    this.logger.debug(`✅ 预加载完成: ${symbols.length} 个数据窗口已初始化`);
   }
 }
