@@ -1239,6 +1239,14 @@ export class BinanceVolumeBacktestService {
   }
 
   /**
+   * 检查是否为BTC交易对
+   */
+  private isBtcPair(symbol: string): boolean {
+    const baseAsset = this.extractBaseAsset(symbol);
+    return baseAsset === "BTC";
+  }
+
+  /**
    * 从交易对中提取基础资产
    */
   private extractBaseAsset(symbol: string): string {
@@ -1389,7 +1397,7 @@ export class BinanceVolumeBacktestService {
     const referenceTime = params.referenceTime || new Date();
 
     this.logger.log(
-      `🚀 筛选交易对: ${symbols.length} 个 | 最少历史: ${minHistoryDays}天${requireFutures ? " | 需要期货合约" : ""}${excludeStablecoins ? " | 排除稳定币" : ""}`,
+      `🚀 筛选交易对: ${symbols.length} 个 | 最少历史: ${minHistoryDays}天${requireFutures ? " | 需要期货合约" : ""}${excludeStablecoins ? " | 排除稳定币" : ""} | 排除BTC`,
     );
 
     const validSymbols: string[] = [];
@@ -1438,13 +1446,19 @@ export class BinanceVolumeBacktestService {
           isValid = false;
         }
 
-        // 检查2: 期货合约要求
+        // 检查2: 排除BTC
+        if (isValid && this.isBtcPair(symbol)) {
+          reasons.push("BTC交易对");
+          isValid = false;
+        }
+
+        // 检查3: 期货合约要求
         if (requireFutures && !futuresAvailability[symbol]) {
           reasons.push("无永续合约");
           isValid = false;
         }
 
-        // 检查3: 历史数据要求
+        // 检查4: 历史数据要求
         if (isValid) {
           const hasValidHistory = await this.checkSymbolHistoryData(
             symbol,
