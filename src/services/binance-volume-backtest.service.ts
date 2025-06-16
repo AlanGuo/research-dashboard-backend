@@ -6,6 +6,8 @@ import {
   VolumeBacktest,
   VolumeBacktestDocument,
   HourlyVolumeRankingItem,
+  HourlyPriceChangeRankingItem,
+  HourlyVolatilityRankingItem,
 } from "../models/volume-backtest.model";
 import {
   SymbolFilterCache,
@@ -48,13 +50,13 @@ export class BinanceVolumeBacktestService {
     // K线数据加载配置 (数据预加载、滑动窗口更新、单个时间点计算统一使用)
     // 原因: 都是相同的K线数据加载操作，对API的压力和网络要求相同
     KLINE_LOADING: {
-      maxConcurrency: 12,  // 较高并发，提升数据加载效率
-      batchSize: 40,       // 较大批次，减少网络往返次数
+      maxConcurrency: 12, // 较高并发，提升数据加载效率
+      batchSize: 40, // 较大批次，减少网络往返次数
     },
     // 通用批量处理配置 (用于其他场景)
     GENERAL: {
-      maxConcurrency: 10,  // 平衡的并发数
-      batchSize: 30,       // 平衡的批次大小
+      maxConcurrency: 10, // 平衡的并发数
+      batchSize: 30, // 平衡的批次大小
     },
   };
 
@@ -252,13 +254,15 @@ export class BinanceVolumeBacktestService {
         data: results.map((result) => ({
           timestamp: result.timestamp.toISOString(),
           hour: result.hour,
-          rankings: result.rankings,
+          volumeRankings: result.volumeRankings,
+          priceChangeRankings: result.priceChangeRankings,
+          volatilityRankings: result.volatilityRankings,
           marketStats: {
             totalVolume: result.totalMarketVolume,
             totalQuoteVolume: result.totalMarketQuoteVolume,
             activePairs: result.activePairs,
             topMarketConcentration: this.calculateMarketConcentration(
-              result.rankings,
+              result.volumeRankings,
             ),
           },
           calculationTime: result.calculationDuration,
@@ -393,7 +397,7 @@ export class BinanceVolumeBacktestService {
     limit: number,
     minVolumeThreshold: number,
   ): HourlyVolumeRankingItem[] {
-    const rankings: HourlyVolumeRankingItem[] = [];
+    const volumeRankings: HourlyVolumeRankingItem[] = [];
 
     for (const [symbol, window] of volumeWindows) {
       if (
@@ -411,7 +415,7 @@ export class BinanceVolumeBacktestService {
             ? "BTC"
             : "ETH";
 
-        rankings.push({
+        volumeRankings.push({
           rank: 0, // 将在排序后设置
           symbol,
           baseAsset,
@@ -419,7 +423,6 @@ export class BinanceVolumeBacktestService {
           volume24h: window.volume24h,
           quoteVolume24h: window.quoteVolume24h,
           marketShare: 0, // 将在计算总量后设置
-          hourlyChange: 0, // TODO: 实现排名变化计算
           priceAtTime: parseFloat(latestKline.close),
           volumeChangePercent: 0, // TODO: 实现成交量变化计算
         });
@@ -427,14 +430,14 @@ export class BinanceVolumeBacktestService {
     }
 
     // 按成交金额排序
-    rankings.sort((a, b) => b.quoteVolume24h - a.quoteVolume24h);
+    volumeRankings.sort((a, b) => b.quoteVolume24h - a.quoteVolume24h);
 
     // 设置排名和市场份额
-    const totalQuoteVolume = rankings.reduce(
+    const totalQuoteVolume = volumeRankings.reduce(
       (sum, item) => sum + item.quoteVolume24h,
       0,
     );
-    rankings.forEach((item, index) => {
+    volumeRankings.forEach((item, index) => {
       item.rank = index + 1;
       item.marketShare =
         totalQuoteVolume > 0
@@ -442,20 +445,160 @@ export class BinanceVolumeBacktestService {
           : 0;
     });
 
-    return rankings.slice(0, limit);
+    return volumeRankings.slice(0, limit);
+  }
+
+  /**
+   * 计算跌幅排行榜
+   */
+  private calculatePriceChangeRankings(
+    volumeWindows: Map<string, VolumeWindow>,
+    limit: number,
+    minVolumeThreshold: number,
+  ): HourlyPriceChangeRankingItem[] {
+    const priceChangeRankings: HourlyPriceChangeRankingItem[] = [];
+
+    for (const [symbol, window] of volumeWindows) {
+      if (
+        window.quoteVolume24h >= minVolumeThreshold &&
+        window.data.length >= 24
+      ) {
+        const latestKline = window.data[window.data.length - 1];
+        const earliestKline = window.data[0];
+
+        const currentPrice = parseFloat(latestKline.close);
+        const price24hAgo = parseFloat(earliestKline.open);
+
+        // 计算24小时涨跌幅
+        const priceChange24h =
+          price24hAgo !== 0
+            ? ((currentPrice - price24hAgo) / price24hAgo) * 100
+            : 0;
+
+        const baseAsset = symbol
+          .replace("USDT", "")
+          .replace("BTC", "")
+          .replace("ETH", "");
+        const quoteAsset = symbol.includes("USDT")
+          ? "USDT"
+          : symbol.includes("BTC")
+            ? "BTC"
+            : "ETH";
+
+        priceChangeRankings.push({
+          rank: 0, // 将在排序后设置
+          symbol,
+          baseAsset,
+          quoteAsset,
+          priceChange24h,
+          priceAtTime: currentPrice,
+          price24hAgo,
+          volume24h: window.volume24h,
+          quoteVolume24h: window.quoteVolume24h,
+        });
+      }
+    }
+
+    // 按跌幅排序（跌幅最大的在前）
+    priceChangeRankings.sort((a, b) => a.priceChange24h - b.priceChange24h);
+
+    // 设置排名
+    priceChangeRankings.forEach((item, index) => {
+      item.rank = index + 1;
+    });
+
+    return priceChangeRankings.slice(0, limit);
+  }
+
+  /**
+   * 计算波动率排行榜
+   */
+  private calculateVolatilityRankings(
+    volumeWindows: Map<string, VolumeWindow>,
+    limit: number,
+    minVolumeThreshold: number,
+  ): HourlyVolatilityRankingItem[] {
+    const volatilityRankings: HourlyVolatilityRankingItem[] = [];
+
+    for (const [symbol, window] of volumeWindows) {
+      if (
+        window.quoteVolume24h >= minVolumeThreshold &&
+        window.data.length >= 24
+      ) {
+        const latestKline = window.data[window.data.length - 1];
+
+        // 计算24小时内的最高价和最低价
+        let high24h = 0;
+        let low24h = Infinity;
+
+        for (const kline of window.data) {
+          const high = parseFloat(kline.high);
+          const low = parseFloat(kline.low);
+
+          if (high > high24h) {
+            high24h = high;
+          }
+          if (low < low24h) {
+            low24h = low;
+          }
+        }
+
+        const currentPrice = parseFloat(latestKline.close);
+
+        // 计算波动率：(最高价 - 最低价) / 最低价 * 100
+        const volatility24h =
+          low24h !== 0 ? ((high24h - low24h) / low24h) * 100 : 0;
+
+        const baseAsset = symbol
+          .replace("USDT", "")
+          .replace("BTC", "")
+          .replace("ETH", "");
+        const quoteAsset = symbol.includes("USDT")
+          ? "USDT"
+          : symbol.includes("BTC")
+            ? "BTC"
+            : "ETH";
+
+        volatilityRankings.push({
+          rank: 0, // 将在排序后设置
+          symbol,
+          baseAsset,
+          quoteAsset,
+          volatility24h,
+          high24h,
+          low24h,
+          priceAtTime: currentPrice,
+          volume24h: window.volume24h,
+          quoteVolume24h: window.quoteVolume24h,
+        });
+      }
+    }
+
+    // 按波动率排序（波动率高的在前）
+    volatilityRankings.sort((a, b) => b.volatility24h - a.volatility24h);
+
+    // 设置排名
+    volatilityRankings.forEach((item, index) => {
+      item.rank = index + 1;
+    });
+
+    return volatilityRankings.slice(0, limit);
   }
 
   /**
    * 计算市场统计数据
    */
-  private calculateMarketStats(rankings: HourlyVolumeRankingItem[]) {
+  private calculateMarketStats(volumeRankings: HourlyVolumeRankingItem[]) {
     return {
-      totalVolume: rankings.reduce((sum, item) => sum + item.volume24h, 0),
-      totalQuoteVolume: rankings.reduce(
+      totalVolume: volumeRankings.reduce(
+        (sum, item) => sum + item.volume24h,
+        0,
+      ),
+      totalQuoteVolume: volumeRankings.reduce(
         (sum, item) => sum + item.quoteVolume24h,
         0,
       ),
-      activePairs: rankings.length,
+      activePairs: volumeRankings.length,
     };
   }
 
@@ -463,12 +606,12 @@ export class BinanceVolumeBacktestService {
    * 计算市场集中度（前10名份额）
    */
   private calculateMarketConcentration(
-    rankings: HourlyVolumeRankingItem[],
+    volumeRankings: HourlyVolumeRankingItem[],
   ): number {
-    const top10Volume = rankings
+    const top10Volume = volumeRankings
       .slice(0, 10)
       .reduce((sum, item) => sum + item.quoteVolume24h, 0);
-    const totalVolume = rankings.reduce(
+    const totalVolume = volumeRankings.reduce(
       (sum, item) => sum + item.quoteVolume24h,
       0,
     );
@@ -513,7 +656,7 @@ export class BinanceVolumeBacktestService {
     }
 
     if (symbol) {
-      query["rankings.symbol"] = symbol;
+      query["volumeRankings.symbol"] = symbol;
     }
 
     return this.volumeBacktestModel.find(query).sort({ timestamp: 1 }).exec();
@@ -1067,12 +1210,7 @@ export class BinanceVolumeBacktestService {
         }
 
         // 计算该时间点的排行榜
-        await this.calculateSinglePeriodRanking(
-          currentTime,
-          symbols,
-          params,
-          weekKey,
-        );
+        await this.calculateSinglePeriodRanking(currentTime, symbols, params);
 
         processedCount++;
 
@@ -1123,14 +1261,14 @@ export class BinanceVolumeBacktestService {
     currentTime: Date,
     symbols: string[],
     params: VolumeBacktestParamsDto,
-    weekKey: string,
   ): Promise<void> {
     const periodStart = Date.now();
 
     // 显示当前计算的交易对信息
-    const symbolsInfo = symbols.length <= 15 ? 
-      `[${symbols.join(", ")}]` : 
-      `[${symbols.slice(0, 8).join(", ")}, ...+${symbols.length - 8}个]`;
+    const symbolsInfo =
+      symbols.length <= 15
+        ? `[${symbols.join(", ")}]`
+        : `[${symbols.slice(0, 8).join(", ")}, ...+${symbols.length - 8}个]`;
     this.logger.log(
       `📊 计算 ${currentTime.toISOString()} 排行榜: ${symbolsInfo}`,
     );
@@ -1151,32 +1289,43 @@ export class BinanceVolumeBacktestService {
 
       // 预加载24小时数据窗口
       const windowStart = new Date(currentTime.getTime() - 24 * 60 * 60 * 1000);
-      await this.preloadVolumeWindows(
-        volumeWindows,
-        windowStart,
-        currentTime,
-        {
-          maxConcurrency: this.CONCURRENCY_CONFIG.KLINE_LOADING.maxConcurrency,
-          batchSize: this.CONCURRENCY_CONFIG.KLINE_LOADING.batchSize,
-        },
-      );
+      await this.preloadVolumeWindows(volumeWindows, windowStart, currentTime, {
+        maxConcurrency: this.CONCURRENCY_CONFIG.KLINE_LOADING.maxConcurrency,
+        batchSize: this.CONCURRENCY_CONFIG.KLINE_LOADING.batchSize,
+      });
 
       // 计算排行榜
-      const rankings = this.calculateRankings(
+      const volumeRankings = this.calculateRankings(
+        volumeWindows,
+        params.limit || 50,
+        params.minVolumeThreshold || 0,
+      );
+
+      // 计算跌幅排行榜
+      const priceChangeRankings = this.calculatePriceChangeRankings(
+        volumeWindows,
+        params.limit || 50,
+        params.minVolumeThreshold || 0,
+      );
+
+      // 计算波动率排行榜
+      const volatilityRankings = this.calculateVolatilityRankings(
         volumeWindows,
         params.limit || 50,
         params.minVolumeThreshold || 0,
       );
 
       // 计算市场统计
-      const marketStats = this.calculateMarketStats(rankings);
+      const marketStats = this.calculateMarketStats(volumeRankings);
 
       // 保存结果
-      if (rankings.length > 0) {
+      if (volumeRankings.length > 0) {
         await this.saveSingleBacktestResult({
           timestamp: currentTime,
           hour: currentTime.getUTCHours(), // 使用UTC时间的小时数
-          rankings,
+          volumeRankings,
+          priceChangeRankings,
+          volatilityRankings,
           totalMarketVolume: marketStats.totalVolume,
           totalMarketQuoteVolume: marketStats.totalQuoteVolume,
           activePairs: marketStats.activePairs,
@@ -1184,10 +1333,23 @@ export class BinanceVolumeBacktestService {
           createdAt: new Date(),
         });
 
+        this.logger.log(`💾 ${currentTime.toISOString()} 排行榜已保存:`);
         this.logger.log(
-          `💾 ${currentTime.toISOString()} 排行榜已保存: 前3名 ${rankings
+          `   📊 成交量前3名: ${volumeRankings
             .slice(0, 3)
             .map((r) => r.symbol)
+            .join(", ")}`,
+        );
+        this.logger.log(
+          `   📉 跌幅前3名: ${priceChangeRankings
+            .slice(0, 3)
+            .map((r) => `${r.symbol}(${r.priceChange24h.toFixed(2)}%)`)
+            .join(", ")}`,
+        );
+        this.logger.log(
+          `   🌊 波动率前3名: ${volatilityRankings
+            .slice(0, 3)
+            .map((r) => `${r.symbol}(${r.volatility24h.toFixed(2)}%)`)
             .join(", ")}`,
         );
       } else {
@@ -1378,10 +1540,11 @@ export class BinanceVolumeBacktestService {
       retryFailed = true,
     } = options;
 
-    const symbolInfo = symbols.length <= 10 ? 
-      `[${symbols.join(", ")}]` : 
-      `[${symbols.slice(0, 5).join(", ")}, ...+${symbols.length - 5}个]`;
-    this.logger.log(`📊 加载K线数据 ${symbolInfo}`);
+    const symbolsInfo =
+      symbols.length <= 10
+        ? `[${symbols.join(", ")}]`
+        : `[${symbols.slice(0, 5).join(", ")}, ...+${symbols.length - 5}个]`;
+    this.logger.log(`📊 加载K线数据 ${symbolsInfo}`);
 
     const processor = async (symbol: string): Promise<KlineData[] | null> => {
       try {
@@ -1421,15 +1584,20 @@ export class BinanceVolumeBacktestService {
     const successCount = Array.from(finalResults.values()).filter(
       (data) => data !== null,
     ).length;
-    const failedSymbols = symbols.filter(symbol => finalResults.get(symbol) === null);
-    
+    const failedSymbols = symbols.filter(
+      (symbol) => finalResults.get(symbol) === null,
+    );
+
     if (failedSymbols.length === 0) {
       this.logger.log(`✅ 全部成功: ${successCount}/${symbols.length}`);
     } else {
-      const failedInfo = failedSymbols.length <= 3 ? 
-        `[${failedSymbols.join(", ")}]` : 
-        `[${failedSymbols.slice(0, 2).join(", ")}, ...${failedSymbols.length - 2}个]`;
-      this.logger.log(`⚠️ 部分失败: ${successCount}/${symbols.length} 成功, 失败 ${failedInfo}`);
+      const failedInfo =
+        failedSymbols.length <= 3
+          ? `[${failedSymbols.join(", ")}]`
+          : `[${failedSymbols.slice(0, 2).join(", ")}, ...${failedSymbols.length - 2}个]`;
+      this.logger.log(
+        `⚠️ 部分失败: ${successCount}/${symbols.length} 成功, 失败 ${failedInfo}`,
+      );
     }
 
     return finalResults;
@@ -1447,9 +1615,9 @@ export class BinanceVolumeBacktestService {
       batchSize?: number;
     } = {},
   ): Promise<void> {
-    const { 
-      maxConcurrency = this.CONCURRENCY_CONFIG.GENERAL.maxConcurrency, 
-      batchSize = this.CONCURRENCY_CONFIG.GENERAL.batchSize 
+    const {
+      maxConcurrency = this.CONCURRENCY_CONFIG.GENERAL.maxConcurrency,
+      batchSize = this.CONCURRENCY_CONFIG.GENERAL.batchSize,
     } = options;
     const symbols = Array.from(volumeWindows.keys());
 
@@ -1458,9 +1626,10 @@ export class BinanceVolumeBacktestService {
     // 分批处理以避免内存压力
     for (let i = 0; i < symbols.length; i += batchSize) {
       const batch = symbols.slice(i, i + batchSize);
-      const batchInfo = batch.length <= 5 ? 
-        `[${batch.join(", ")}]` : 
-        `[${batch.slice(0, 3).join(", ")}, ...${batch.length - 3}个]`;
+      const batchInfo =
+        batch.length <= 5
+          ? `[${batch.join(", ")}]`
+          : `[${batch.slice(0, 3).join(", ")}, ...+${batch.length - 3}个]`;
       this.logger.log(
         `   📦 批次 ${Math.floor(i / batchSize) + 1}/${Math.ceil(symbols.length / batchSize)}: 加载 ${batchInfo}`,
       );

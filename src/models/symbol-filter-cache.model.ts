@@ -3,7 +3,10 @@ import { Document } from "mongoose";
 
 export type SymbolFilterCacheDocument = SymbolFilterCache & Document;
 
-@Schema({ timestamps: true })
+@Schema({ 
+  timestamps: true,
+  collection: 'symbol_filter_caches'
+})
 export class SymbolFilterCache {
   @Prop({ required: true })
   filterHash: string; // 筛选条件的哈希值，用于快速查找

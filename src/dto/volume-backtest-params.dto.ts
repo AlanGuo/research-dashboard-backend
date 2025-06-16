@@ -101,7 +101,9 @@ export interface VolumeBacktestResponse {
   data: {
     timestamp: string;
     hour: number;
-    rankings: HourlyVolumeRankingItem[];
+    volumeRankings: HourlyVolumeRankingItem[];
+    priceChangeRankings: HourlyPriceChangeRankingItem[];
+    volatilityRankings: HourlyVolatilityRankingItem[];
     marketStats: {
       totalVolume: number;
       totalQuoteVolume: number;
@@ -147,7 +149,31 @@ export interface HourlyVolumeRankingItem {
   volume24h: number;
   quoteVolume24h: number;
   marketShare: number;
-  hourlyChange: number;
   priceAtTime: number;
   volumeChangePercent: number;
+}
+
+export interface HourlyPriceChangeRankingItem {
+  rank: number;
+  symbol: string;
+  baseAsset: string;
+  quoteAsset: string;
+  priceChange24h: number; // 24小时价格变化百分比（负数表示跌幅，跌幅最大的排在前面）
+  priceAtTime: number; // 当前价格
+  price24hAgo: number; // 24小时前价格
+  volume24h: number; // 过去24小时成交量
+  quoteVolume24h: number; // 过去24小时成交金额
+}
+
+export interface HourlyVolatilityRankingItem {
+  rank: number;
+  symbol: string;
+  baseAsset: string;
+  quoteAsset: string;
+  volatility24h: number; // 24小时波动率百分比（高低价差/最低价*100，波动率高的排在前面）
+  high24h: number; // 24小时最高价
+  low24h: number; // 24小时最低价
+  priceAtTime: number; // 当前价格
+  volume24h: number; // 过去24小时成交量
+  quoteVolume24h: number; // 过去24小时成交金额
 }
