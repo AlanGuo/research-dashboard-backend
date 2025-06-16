@@ -242,6 +242,19 @@ POST /api/asset-trend      # 创建资产趋势
 GET  /api/kline           # 获取K线数据
 ```
 
+### 币安成交量回测
+```
+POST /v1/binance/volume-backtest                    # 执行成交量排行榜回测
+GET  /v1/binance/volume-backtest                    # 查询历史回测数据
+GET  /v1/binance/volume-backtest/status             # 获取回测任务状态
+POST /v1/binance/volume-backtest/cache-cleanup      # 清理过期缓存
+```
+
+**查询参数变更 (v2.0):**
+- ✅ 新增: `startTime` 和 `endTime` 支持自定义时间范围
+- ❌ 移除: `date`、`hour`、`symbol` 参数
+- 📝 详细文档: [币安成交量回测功能文档](./docs/binance-volume-backtest/README.md)
+
 ## ⚙️ 环境变量配置
 
 创建 `.env` 文件并配置以下变量：
