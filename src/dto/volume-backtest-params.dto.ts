@@ -102,9 +102,7 @@ export interface VolumeBacktestResponse {
   data: {
     timestamp: string;
     hour: number;
-    volumeRankings: HourlyVolumeRankingItem[];
-    priceChangeRankings: HourlyPriceChangeRankingItem[];
-    volatilityRankings: HourlyVolatilityRankingItem[];
+    rankings: HourlyRankingItem[]; // 合并后的排行榜，按涨跌幅排序（跌幅最大的在前）
     btcPrice: number; // BTC现货价格
     btcPriceChange24h: number; // BTC相对24小时前价格的变化率（百分比）
     marketStats: {
@@ -178,4 +176,21 @@ export interface HourlyVolatilityRankingItem {
   priceAtTime: number; // 当前价格
   volume24h: number; // 过去24小时成交量
   quoteVolume24h: number; // 过去24小时成交金额
+}
+
+// 合并排行榜项接口 - 包含价格变化、成交量和波动率信息
+export interface HourlyRankingItem {
+  rank: number;
+  symbol: string;
+  baseAsset: string;
+  quoteAsset: string;
+  priceChange24h: number; // 24小时价格变化百分比（负数表示跌幅）
+  priceAtTime: number; // 当前价格
+  price24hAgo: number; // 24小时前价格
+  volume24h: number; // 过去24小时成交量
+  quoteVolume24h: number; // 过去24小时成交金额
+  marketShare: number; // 市场份额百分比
+  volatility24h: number; // 24小时波动率百分比
+  high24h: number; // 24小时最高价
+  low24h: number; // 24小时最低价
 }

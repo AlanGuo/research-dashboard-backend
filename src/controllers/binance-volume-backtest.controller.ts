@@ -121,15 +121,9 @@ export class BinanceVolumeBacktestController {
           hour: result.hour,
           btcPrice: result.btcPrice,
           btcPriceChange24h: result.btcPriceChange24h,
-          volumeRankings: query.limit
-            ? result.volumeRankings.slice(0, query.limit)
-            : result.volumeRankings,
-          priceChangeRankings: query.limit
-            ? result.priceChangeRankings.slice(0, query.limit)
-            : result.priceChangeRankings,
-          volatilityRankings: query.limit
-            ? result.volatilityRankings.slice(0, query.limit)
-            : result.volatilityRankings,
+          rankings: query.limit
+            ? result.rankings.slice(0, query.limit)
+            : result.rankings,
           marketStats: {
             totalVolume: result.totalMarketVolume,
             totalQuoteVolume: result.totalMarketQuoteVolume,

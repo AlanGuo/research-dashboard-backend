@@ -12,13 +12,7 @@ export class VolumeBacktest {
   hour: number; // 小时标识 (0-23)
 
   @Prop({ type: [Object], required: true })
-  volumeRankings: HourlyVolumeRankingItem[];
-
-  @Prop({ type: [Object], required: true })
-  priceChangeRankings: HourlyPriceChangeRankingItem[];
-
-  @Prop({ type: [Object], required: true })
-  volatilityRankings: HourlyVolatilityRankingItem[];
+  rankings: HourlyRankingItem[]; // 合并后的排行榜，按涨跌幅排序（跌幅最大的在前）
 
   @Prop({ required: true })
   totalMarketVolume: number;
@@ -39,41 +33,21 @@ export class VolumeBacktest {
   calculationDuration: number; // 计算耗时(ms)
 }
 
-export interface HourlyVolumeRankingItem {
+// 合并排行榜项接口 - 包含价格变化、成交量和波动率信息
+export interface HourlyRankingItem {
   rank: number;
   symbol: string;
   baseAsset: string;
   quoteAsset: string;
-  volume24h: number; // 过去24小时成交量
-  quoteVolume24h: number; // 过去24小时成交金额
-  marketShare: number; // 市场份额百分比
-  priceAtTime: number; // 当时价格
-  volumeChangePercent: number; // 成交量变化百分比
-}
-
-export interface HourlyPriceChangeRankingItem {
-  rank: number;
-  symbol: string;
-  baseAsset: string;
-  quoteAsset: string;
-  priceChange24h: number; // 24小时价格变化百分比（负数表示跌幅，跌幅最大的排在前面）
+  priceChange24h: number; // 24小时价格变化百分比（负数表示跌幅）
   priceAtTime: number; // 当前价格
   price24hAgo: number; // 24小时前价格
   volume24h: number; // 过去24小时成交量
   quoteVolume24h: number; // 过去24小时成交金额
-}
-
-export interface HourlyVolatilityRankingItem {
-  rank: number;
-  symbol: string;
-  baseAsset: string;
-  quoteAsset: string;
-  volatility24h: number; // 24小时波动率百分比（高低价差/最低价*100）
+  marketShare: number; // 市场份额百分比
+  volatility24h: number; // 24小时波动率百分比
   high24h: number; // 24小时最高价
   low24h: number; // 24小时最低价
-  priceAtTime: number; // 当前价格
-  volume24h: number; // 过去24小时成交量
-  quoteVolume24h: number; // 过去24小时成交金额
 }
 
 export const VolumeBacktestSchema =

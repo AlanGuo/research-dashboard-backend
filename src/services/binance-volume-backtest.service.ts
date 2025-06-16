@@ -5,9 +5,7 @@ import { createHash } from "crypto";
 import {
   VolumeBacktest,
   VolumeBacktestDocument,
-  HourlyVolumeRankingItem,
-  HourlyPriceChangeRankingItem,
-  HourlyVolatilityRankingItem,
+  HourlyRankingItem as ModelHourlyRankingItem,
 } from "../models/volume-backtest.model";
 import {
   SymbolFilterCache,
@@ -16,6 +14,7 @@ import {
 import {
   VolumeBacktestParamsDto,
   VolumeBacktestResponse,
+  HourlyRankingItem,
 } from "../dto/volume-backtest-params.dto";
 import { ConfigService } from "../config/config.service";
 import { BinanceService } from "./binance.service";
@@ -255,16 +254,14 @@ export class BinanceVolumeBacktestService {
         data: results.map((result) => ({
           timestamp: result.timestamp.toISOString(),
           hour: result.hour,
-          volumeRankings: result.volumeRankings,
-          priceChangeRankings: result.priceChangeRankings,
-          volatilityRankings: result.volatilityRankings,
+          rankings: result.rankings, // 使用合并后的rankings
           btcPrice: result.btcPrice, // 添加BTC价格
           btcPriceChange24h: result.btcPriceChange24h, // 添加BTC价格变化率
           marketStats: {
             totalVolume: result.totalMarketVolume,
             totalQuoteVolume: result.totalMarketQuoteVolume,
             topMarketConcentration: this.calculateMarketConcentration(
-              result.volumeRankings,
+              result.rankings,
             ),
           },
           calculationTime: result.calculationDuration,
@@ -398,68 +395,10 @@ export class BinanceVolumeBacktestService {
     volumeWindows: Map<string, VolumeWindow>,
     limit: number,
     minVolumeThreshold: number,
-  ): HourlyVolumeRankingItem[] {
-    const volumeRankings: HourlyVolumeRankingItem[] = [];
+  ): HourlyRankingItem[] {
+    const rankings: HourlyRankingItem[] = [];
 
-    for (const [symbol, window] of volumeWindows) {
-      if (
-        window.quoteVolume24h >= minVolumeThreshold &&
-        window.data.length > 0
-      ) {
-        const latestKline = window.data[window.data.length - 1];
-        const baseAsset = symbol
-          .replace("USDT", "")
-          .replace("BTC", "")
-          .replace("ETH", "");
-        const quoteAsset = symbol.includes("USDT")
-          ? "USDT"
-          : symbol.includes("BTC")
-            ? "BTC"
-            : "ETH";
-
-        volumeRankings.push({
-          rank: 0, // 将在排序后设置
-          symbol,
-          baseAsset,
-          quoteAsset,
-          volume24h: window.volume24h,
-          quoteVolume24h: window.quoteVolume24h,
-          marketShare: 0, // 将在计算总量后设置
-          priceAtTime: parseFloat(latestKline.close),
-          volumeChangePercent: 0, // TODO: 实现成交量变化计算
-        });
-      }
-    }
-
-    // 按成交金额排序
-    volumeRankings.sort((a, b) => b.quoteVolume24h - a.quoteVolume24h);
-
-    // 设置排名和市场份额
-    const totalQuoteVolume = volumeRankings.reduce(
-      (sum, item) => sum + item.quoteVolume24h,
-      0,
-    );
-    volumeRankings.forEach((item, index) => {
-      item.rank = index + 1;
-      item.marketShare =
-        totalQuoteVolume > 0
-          ? (item.quoteVolume24h / totalQuoteVolume) * 100
-          : 0;
-    });
-
-    return volumeRankings.slice(0, limit);
-  }
-
-  /**
-   * 计算跌幅排行榜
-   */
-  private calculatePriceChangeRankings(
-    volumeWindows: Map<string, VolumeWindow>,
-    limit: number,
-    minVolumeThreshold: number,
-  ): HourlyPriceChangeRankingItem[] {
-    const priceChangeRankings: HourlyPriceChangeRankingItem[] = [];
-
+    // 1. 首先根据涨跌幅找出交易对
     for (const [symbol, window] of volumeWindows) {
       if (
         window.quoteVolume24h >= minVolumeThreshold &&
@@ -477,58 +416,6 @@ export class BinanceVolumeBacktestService {
             ? ((currentPrice - price24hAgo) / price24hAgo) * 100
             : 0;
 
-        const baseAsset = symbol
-          .replace("USDT", "")
-          .replace("BTC", "")
-          .replace("ETH", "");
-        const quoteAsset = symbol.includes("USDT")
-          ? "USDT"
-          : symbol.includes("BTC")
-            ? "BTC"
-            : "ETH";
-
-        priceChangeRankings.push({
-          rank: 0, // 将在排序后设置
-          symbol,
-          baseAsset,
-          quoteAsset,
-          priceChange24h,
-          priceAtTime: currentPrice,
-          price24hAgo,
-          volume24h: window.volume24h,
-          quoteVolume24h: window.quoteVolume24h,
-        });
-      }
-    }
-
-    // 按跌幅排序（跌幅最大的在前）
-    priceChangeRankings.sort((a, b) => a.priceChange24h - b.priceChange24h);
-
-    // 设置排名
-    priceChangeRankings.forEach((item, index) => {
-      item.rank = index + 1;
-    });
-
-    return priceChangeRankings.slice(0, limit);
-  }
-
-  /**
-   * 计算波动率排行榜
-   */
-  private calculateVolatilityRankings(
-    volumeWindows: Map<string, VolumeWindow>,
-    limit: number,
-    minVolumeThreshold: number,
-  ): HourlyVolatilityRankingItem[] {
-    const volatilityRankings: HourlyVolatilityRankingItem[] = [];
-
-    for (const [symbol, window] of volumeWindows) {
-      if (
-        window.quoteVolume24h >= minVolumeThreshold &&
-        window.data.length >= 24
-      ) {
-        const latestKline = window.data[window.data.length - 1];
-
         // 计算24小时内的最高价和最低价
         let high24h = 0;
         let low24h = Infinity;
@@ -545,8 +432,6 @@ export class BinanceVolumeBacktestService {
           }
         }
 
-        const currentPrice = parseFloat(latestKline.close);
-
         // 计算波动率：(最高价 - 最低价) / 最低价 * 100
         const volatility24h =
           low24h !== 0 ? ((high24h - low24h) / low24h) * 100 : 0;
@@ -561,42 +446,56 @@ export class BinanceVolumeBacktestService {
             ? "BTC"
             : "ETH";
 
-        volatilityRankings.push({
+        rankings.push({
           rank: 0, // 将在排序后设置
           symbol,
           baseAsset,
           quoteAsset,
+          priceChange24h,
+          priceAtTime: currentPrice,
+          price24hAgo,
+          volume24h: window.volume24h,
+          quoteVolume24h: window.quoteVolume24h,
+          marketShare: 0, // 将在计算总量后设置
           volatility24h,
           high24h,
           low24h,
-          priceAtTime: currentPrice,
-          volume24h: window.volume24h,
-          quoteVolume24h: window.quoteVolume24h,
         });
       }
     }
 
-    // 按波动率排序（波动率高的在前）
-    volatilityRankings.sort((a, b) => b.volatility24h - a.volatility24h);
+    // 2. 按涨跌幅排序（跌幅最大的在前）
+    rankings.sort((a, b) => a.priceChange24h - b.priceChange24h);
 
-    // 设置排名
-    volatilityRankings.forEach((item, index) => {
+    // 3. 设置排名和市场份额
+    const totalQuoteVolume = rankings.reduce(
+      (sum, item) => sum + item.quoteVolume24h,
+      0,
+    );
+    rankings.forEach((item, index) => {
       item.rank = index + 1;
+      item.marketShare =
+        totalQuoteVolume > 0
+          ? (item.quoteVolume24h / totalQuoteVolume) * 100
+          : 0;
     });
 
-    return volatilityRankings.slice(0, limit);
+    return rankings.slice(0, limit);
   }
+
+
+
 
   /**
    * 计算市场统计数据
    */
-  private calculateMarketStats(volumeRankings: HourlyVolumeRankingItem[]) {
+  private calculateMarketStats(rankings: HourlyRankingItem[]) {
     return {
-      totalVolume: volumeRankings.reduce(
+      totalVolume: rankings.reduce(
         (sum, item) => sum + item.volume24h,
         0,
       ),
-      totalQuoteVolume: volumeRankings.reduce(
+      totalQuoteVolume: rankings.reduce(
         (sum, item) => sum + item.quoteVolume24h,
         0,
       ),
@@ -607,12 +506,12 @@ export class BinanceVolumeBacktestService {
    * 计算市场集中度（前10名份额）
    */
   private calculateMarketConcentration(
-    volumeRankings: HourlyVolumeRankingItem[],
+    rankings: HourlyRankingItem[],
   ): number {
-    const top10Volume = volumeRankings
+    const top10Volume = rankings
       .slice(0, 10)
       .reduce((sum, item) => sum + item.quoteVolume24h, 0);
-    const totalVolume = volumeRankings.reduce(
+    const totalVolume = rankings.reduce(
       (sum, item) => sum + item.quoteVolume24h,
       0,
     );
@@ -657,7 +556,7 @@ export class BinanceVolumeBacktestService {
     }
 
     if (symbol) {
-      query["volumeRankings.symbol"] = symbol;
+      query["rankings.symbol"] = symbol;
     }
 
     return this.volumeBacktestModel.find(query).sort({ timestamp: 1 }).exec();
@@ -1310,16 +1209,16 @@ export class BinanceVolumeBacktestService {
             endTime: currentTime.getTime() + 60 * 60 * 1000, // +1小时
             limit: 26, // 获取26个小时的数据，确保覆盖所需时间范围
           });
-          
+
           if (btcKlines && btcKlines.length >= 2) {
             // 最新的K线是当前价格，倒数第25个（如果有的话）是24小时前的价格
             const currentKline = btcKlines[btcKlines.length - 1]; // 最新价格
             const target24hAgoTime = currentTime.getTime() - 24 * 60 * 60 * 1000;
-            
+
             // 找到最接近24小时前的K线数据
             let btc24hAgoKline = null;
             let minTimeDiff = Infinity;
-            
+
             for (const kline of btcKlines) {
               const timeDiff = Math.abs(kline.openTime - target24hAgoTime);
               if (timeDiff < minTimeDiff) {
@@ -1327,11 +1226,11 @@ export class BinanceVolumeBacktestService {
                 btc24hAgoKline = kline;
               }
             }
-            
+
             if (currentKline && btc24hAgoKline) {
               btcPrice = parseFloat(currentKline.close);
               const btcPrice24hAgo = parseFloat(btc24hAgoKline.close);
-              
+
               if (btcPrice24hAgo > 0) {
                 btcPriceChange24h = ((btcPrice - btcPrice24hAgo) / btcPrice24hAgo) * 100;
                 this.logger.debug(`📈 BTC价格变化 (${currentTime.toISOString()}): $${btcPrice.toFixed(2)} (24h: ${btcPriceChange24h > 0 ? '+' : ''}${btcPriceChange24h.toFixed(2)}%)`);
@@ -1339,7 +1238,7 @@ export class BinanceVolumeBacktestService {
                 this.logger.warn(`⚠️ BTC 24小时前价格数据异常: ${btcPrice24hAgo}`);
                 btcPriceChange24h = 0;
               }
-              
+
               break; // 成功获取，跳出重试循环
             } else {
               this.logger.warn(`⚠️ 无法从K线数据中提取有效的BTC价格信息`);
@@ -1362,38 +1261,22 @@ export class BinanceVolumeBacktestService {
         }
       }
 
-      // 计算排行榜
-      const volumeRankings = this.calculateRankings(
-        volumeWindows,
-        params.limit || 50,
-        params.minVolumeThreshold || 0,
-      );
-
-      // 计算跌幅排行榜
-      const priceChangeRankings = this.calculatePriceChangeRankings(
-        volumeWindows,
-        params.limit || 50,
-        params.minVolumeThreshold || 0,
-      );
-
-      // 计算波动率排行榜
-      const volatilityRankings = this.calculateVolatilityRankings(
+      // 计算合并排行榜（按涨跌幅排序，跌幅最大的在前）
+      const rankings = this.calculateRankings(
         volumeWindows,
         params.limit || 50,
         params.minVolumeThreshold || 0,
       );
 
       // 计算市场统计
-      const marketStats = this.calculateMarketStats(volumeRankings);
+      const marketStats = this.calculateMarketStats(rankings);
 
       // 保存结果
-      if (volumeRankings.length > 0) {
+      if (rankings.length > 0) {
         await this.saveSingleBacktestResult({
           timestamp: currentTime,
           hour: currentTime.getUTCHours(), // 使用UTC时间的小时数
-          volumeRankings,
-          priceChangeRankings,
-          volatilityRankings,
+          rankings: rankings, // 使用合并后的rankings
           totalMarketVolume: marketStats.totalVolume,
           totalMarketQuoteVolume: marketStats.totalQuoteVolume,
           btcPrice, // 添加BTC价格
@@ -1405,21 +1288,9 @@ export class BinanceVolumeBacktestService {
         this.logger.log(`💾 ${currentTime.toISOString()} 排行榜已保存:`);
         this.logger.log(`   📈 BTC价格: $${btcPrice.toFixed(2)} (24h: ${btcPriceChange24h > 0 ? '+' : ''}${btcPriceChange24h.toFixed(2)}%)`);
         this.logger.log(
-          `   📊 成交量前3名: ${volumeRankings
-            .slice(0, 3)
-            .map((r) => r.symbol)
-            .join(", ")}`,
-        );
-        this.logger.log(
-          `   📉 跌幅前3名: ${priceChangeRankings
+          `   📉 跌幅前3名: ${rankings
             .slice(0, 3)
             .map((r) => `${r.symbol}(${r.priceChange24h.toFixed(2)}%)`)
-            .join(", ")}`,
-        );
-        this.logger.log(
-          `   🌊 波动率前3名: ${volatilityRankings
-            .slice(0, 3)
-            .map((r) => `${r.symbol}(${r.volatility24h.toFixed(2)}%)`)
             .join(", ")}`,
         );
       } else {
