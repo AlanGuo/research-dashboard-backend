@@ -259,6 +259,7 @@ export class BinanceVolumeBacktestService {
           priceChangeRankings: result.priceChangeRankings,
           volatilityRankings: result.volatilityRankings,
           btcPrice: result.btcPrice, // 添加BTC价格
+          btcPriceChange24h: result.btcPriceChange24h, // 添加BTC价格变化率
           marketStats: {
             totalVolume: result.totalMarketVolume,
             totalQuoteVolume: result.totalMarketQuoteVolume,
@@ -1294,25 +1295,57 @@ export class BinanceVolumeBacktestService {
         batchSize: this.CONCURRENCY_CONFIG.KLINE_LOADING.batchSize,
       });
 
-      // 获取BTC现货价格（带重试机制）
+      // 获取BTC现货价格和24小时前价格（带重试机制）
       let btcPrice = 0;
+      let btcPriceChange24h = 0;
       const maxRetries = 3;
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
+          // 一次性获取过去25小时的BTC价格数据（包含当前小时和24小时前）
+          const btc25hAgoTime = currentTime.getTime() - 25 * 60 * 60 * 1000;
           const btcKlines = await this.binanceService.getKlines({
             symbol: 'BTCUSDT',
             interval: '1h',
-            startTime: currentTime.getTime(),
+            startTime: btc25hAgoTime,
             endTime: currentTime.getTime() + 60 * 60 * 1000, // +1小时
-            limit: 1,
+            limit: 26, // 获取26个小时的数据，确保覆盖所需时间范围
           });
           
-          if (btcKlines && btcKlines.length > 0) {
-            btcPrice = parseFloat(btcKlines[0].close);
-            this.logger.debug(`📈 BTC价格 (${currentTime.toISOString()}): $${btcPrice.toFixed(2)}`);
-            break; // 成功获取，跳出重试循环
+          if (btcKlines && btcKlines.length >= 2) {
+            // 最新的K线是当前价格，倒数第25个（如果有的话）是24小时前的价格
+            const currentKline = btcKlines[btcKlines.length - 1]; // 最新价格
+            const target24hAgoTime = currentTime.getTime() - 24 * 60 * 60 * 1000;
+            
+            // 找到最接近24小时前的K线数据
+            let btc24hAgoKline = null;
+            let minTimeDiff = Infinity;
+            
+            for (const kline of btcKlines) {
+              const timeDiff = Math.abs(kline.openTime - target24hAgoTime);
+              if (timeDiff < minTimeDiff) {
+                minTimeDiff = timeDiff;
+                btc24hAgoKline = kline;
+              }
+            }
+            
+            if (currentKline && btc24hAgoKline) {
+              btcPrice = parseFloat(currentKline.close);
+              const btcPrice24hAgo = parseFloat(btc24hAgoKline.close);
+              
+              if (btcPrice24hAgo > 0) {
+                btcPriceChange24h = ((btcPrice - btcPrice24hAgo) / btcPrice24hAgo) * 100;
+                this.logger.debug(`📈 BTC价格变化 (${currentTime.toISOString()}): $${btcPrice.toFixed(2)} (24h: ${btcPriceChange24h > 0 ? '+' : ''}${btcPriceChange24h.toFixed(2)}%)`);
+              } else {
+                this.logger.warn(`⚠️ BTC 24小时前价格数据异常: ${btcPrice24hAgo}`);
+                btcPriceChange24h = 0;
+              }
+              
+              break; // 成功获取，跳出重试循环
+            } else {
+              this.logger.warn(`⚠️ 无法从K线数据中提取有效的BTC价格信息`);
+            }
           } else {
-            this.logger.warn(`⚠️ 无法获取BTC价格数据: ${currentTime.toISOString()} (尝试 ${attempt}/${maxRetries})`);
+            this.logger.warn(`⚠️ 无法获取足够的BTC价格历史数据: ${currentTime.toISOString()} (尝试 ${attempt}/${maxRetries})`);
           }
         } catch (error) {
           const isLastAttempt = attempt === maxRetries;
@@ -1320,6 +1353,7 @@ export class BinanceVolumeBacktestService {
             this.logger.error(`❌ 获取BTC价格最终失败 (已重试${maxRetries}次): ${error.message}`);
             // 如果获取BTC价格失败，继续执行，但价格设为0
             btcPrice = 0;
+            btcPriceChange24h = 0;
           } else {
             this.logger.warn(`⚠️ 获取BTC价格失败，正在重试 (${attempt}/${maxRetries}): ${error.message}`);
             // 等待后重试
@@ -1363,12 +1397,13 @@ export class BinanceVolumeBacktestService {
           totalMarketVolume: marketStats.totalVolume,
           totalMarketQuoteVolume: marketStats.totalQuoteVolume,
           btcPrice, // 添加BTC价格
+          btcPriceChange24h, // 添加BTC价格变化率
           calculationDuration: Date.now() - periodStart,
           createdAt: new Date(),
         });
 
         this.logger.log(`💾 ${currentTime.toISOString()} 排行榜已保存:`);
-        this.logger.log(`   📈 BTC价格: $${btcPrice.toFixed(2)}`);
+        this.logger.log(`   📈 BTC价格: $${btcPrice.toFixed(2)} (24h: ${btcPriceChange24h > 0 ? '+' : ''}${btcPriceChange24h.toFixed(2)}%)`);
         this.logger.log(
           `   📊 成交量前3名: ${volumeRankings
             .slice(0, 3)

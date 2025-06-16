@@ -120,6 +120,7 @@ export class BinanceVolumeBacktestController {
           timestamp: result.timestamp.toISOString(),
           hour: result.hour,
           btcPrice: result.btcPrice,
+          btcPriceChange24h: result.btcPriceChange24h,
           volumeRankings: query.limit
             ? result.volumeRankings.slice(0, query.limit)
             : result.volumeRankings,

@@ -29,6 +29,9 @@ export class VolumeBacktest {
   @Prop({ required: true })
   btcPrice: number; // BTC现货价格
 
+  @Prop({ required: true })
+  btcPriceChange24h: number; // BTC相对24小时前价格的变化率（百分比）
+
   @Prop({ default: Date.now })
   createdAt: Date;
 

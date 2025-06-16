@@ -19,6 +19,7 @@
 - ✅ 包含市场统计和集中度分析
 - ✅ 结果存储到MongoDB，支持历史查询
 - ✅ 动态交易对管理，反映真实市场演变
+- ✅ **BTC 价格跟踪和 24 小时变化率计算**
 
 ## 🆕 周期性交易对计算
 
@@ -216,6 +217,8 @@ curl -X POST http://localhost:4001/v1/binance/volume-backtest/cache-cleanup \
     {
       "timestamp": "2024-12-08T15:00:00.000Z",
       "hour": 15,
+      "btcPrice": 42500.0,
+      "btcPriceChange24h": 2.34,
       "rankings": [
         {
           "rank": 1,
@@ -279,6 +282,8 @@ curl -X POST http://localhost:4001/v1/binance/volume-backtest/cache-cleanup \
 
 **新增响应字段说明：**
 
+- `btcPrice`: BTC 当前现货价格（USDT）
+- `btcPriceChange24h`: BTC 相对 24 小时前价格的变化率（百分比，正数表示上涨，负数表示下跌）
 - `weeklyCalculations`: 回测期间涉及的周数
 - `symbolStats.weeklyBreakdown`: 每周的交易对筛选统计
 - `symbolStats.validSymbols`: 平均每周有效交易对数量
@@ -379,6 +384,28 @@ curl -X POST http://localhost:4001/v1/binance/volume-backtest \
 ```bash
 curl "http://localhost:4001/v1/binance/volume-backtest?startTime=2024-12-08T15:00:00Z&endTime=2024-12-08T16:00:00Z&limit=10"
 ```
+
+## BTC 价格数据示例
+
+回测结果中的 BTC 价格数据可以用于分析市场行情与成交量排行榜的关系：
+
+```json
+{
+  "timestamp": "2024-12-08T15:00:00.000Z",
+  "btcPrice": 42500.0,
+  "btcPriceChange24h": 2.34,
+  "volumeRankings": [...]
+}
+```
+
+**字段解释：**
+- `btcPrice`: 该时间点的 BTC/USDT 现货价格（$42,500）
+- `btcPriceChange24h`: BTC 相对 24 小时前的价格变化率（+2.34% 表示上涨）
+
+**应用场景：**
+- 分析 BTC 价格波动对整体市场成交量的影响
+- 识别 BTC 暴涨暴跌时段的热门交易对变化
+- 构建基于 BTC 走势的交易策略回测
 
 ## 扩展功能
 
