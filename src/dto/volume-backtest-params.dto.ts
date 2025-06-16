@@ -75,18 +75,11 @@ export class VolumeBacktestParamsDto {
 export class VolumeBacktestQueryDto {
   @IsOptional()
   @IsDateString()
-  date?: string; // 查询特定日期的数据
+  startTime?: string; // 自定义开始时间 (ISO 8601 格式)
 
   @IsOptional()
-  @IsNumber()
-  @Min(0)
-  @Max(23)
-  @Transform(({ value }) => parseInt(value))
-  hour?: number; // 查询特定小时的数据
-
-  @IsOptional()
-  @IsString()
-  symbol?: string; // 查询特定交易对的历史排名
+  @IsDateString()
+  endTime?: string; // 自定义结束时间 (ISO 8601 格式)
 
   @IsOptional()
   @IsNumber()

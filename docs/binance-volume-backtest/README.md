@@ -85,7 +85,24 @@ POST /v1/binance/volume-backtest
 ### 2. 查询历史数据
 
 ```bash
-GET /v1/binance/volume-backtest?date=2024-12-01&hour=12&limit=20
+GET /v1/binance/volume-backtest?startTime=2024-12-01T12:00:00Z&endTime=2024-12-01T13:00:00Z&limit=20
+```
+
+**查询参数：**
+- `startTime` (可选): 查询开始时间 (ISO 8601 格式)
+- `endTime` (可选): 查询结束时间 (ISO 8601 格式)  
+- `limit` (可选): 限制返回结果数量 (默认50, 最大100)
+
+**查询示例：**
+```bash
+# 查询特定时间范围的数据
+GET /v1/binance/volume-backtest?startTime=2024-12-01T00:00:00Z&endTime=2024-12-02T00:00:00Z
+
+# 查询1小时的数据
+GET /v1/binance/volume-backtest?startTime=2024-12-01T14:00:00Z&endTime=2024-12-01T15:00:00Z&limit=10
+
+# 查询所有历史数据（不推荐，数据量可能很大）
+GET /v1/binance/volume-backtest
 ```
 
 ### 3. 获取支持的交易对
@@ -142,16 +159,20 @@ curl -X POST http://localhost:4001/v1/binance/volume-backtest \
   }'
 ```
 
-### 4. 查询特定时间点的排行榜
+### 4. 查询特定时间范围的排行榜
 
 ```bash
-curl "http://localhost:4001/v1/binance/volume-backtest?date=2024-12-08&hour=15&limit=10"
+curl "http://localhost:4001/v1/binance/volume-backtest?startTime=2024-12-08T15:00:00Z&endTime=2024-12-08T16:00:00Z&limit=10"
 ```
 
-### 5. 查询某个交易对的历史排名
+### 5. 查询历史数据
 
 ```bash
-curl "http://localhost:4001/v1/binance/volume-backtest?symbol=BTCUSDT&date=2024-12-08"
+# 查询一整天的历史数据
+curl "http://localhost:4001/v1/binance/volume-backtest?startTime=2024-12-08T00:00:00Z&endTime=2024-12-09T00:00:00Z&limit=50"
+
+# 查询特定时间段的数据
+curl "http://localhost:4001/v1/binance/volume-backtest?startTime=2024-12-08T14:00:00Z&endTime=2024-12-08T18:00:00Z&limit=20"
 ```
 
 ### 6. 跨周回测（体验周期性交易对计算）
@@ -356,7 +377,7 @@ curl -X POST http://localhost:4001/v1/binance/volume-backtest \
 
 2. **查询生成的数据**：
 ```bash
-curl "http://localhost:4001/v1/binance/volume-backtest?date=2024-12-08&hour=15&limit=10"
+curl "http://localhost:4001/v1/binance/volume-backtest?startTime=2024-12-08T15:00:00Z&endTime=2024-12-08T16:00:00Z&limit=10"
 ```
 
 ## 扩展功能

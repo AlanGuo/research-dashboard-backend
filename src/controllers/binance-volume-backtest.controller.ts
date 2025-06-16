@@ -83,28 +83,25 @@ export class BinanceVolumeBacktestController {
       let startTime: Date | undefined;
       let endTime: Date | undefined;
 
-      if (query.date) {
-        // 查询特定日期的数据
-        startTime = new Date(query.date);
-        endTime = new Date(startTime.getTime() + 24 * 60 * 60 * 1000);
+      if (query.startTime) {
+        startTime = new Date(query.startTime);
       }
 
-      if (query.hour !== undefined) {
-        // 查询特定小时的数据
-        if (!startTime) {
-          throw new HttpException(
-            "查询特定小时需要提供日期参数",
-            HttpStatus.BAD_REQUEST,
-          );
-        }
-        startTime.setHours(query.hour, 0, 0, 0);
-        endTime = new Date(startTime.getTime() + 60 * 60 * 1000);
+      if (query.endTime) {
+        endTime = new Date(query.endTime);
+      }
+
+      // 验证时间范围
+      if (startTime && endTime && startTime >= endTime) {
+        throw new HttpException(
+          "结束时间必须大于开始时间",
+          HttpStatus.BAD_REQUEST,
+        );
       }
 
       const results = await this.volumeBacktestService.getBacktestResults(
         startTime,
         endTime,
-        query.symbol,
       );
 
       return {
@@ -129,7 +126,6 @@ export class BinanceVolumeBacktestController {
         })),
         meta: {
           count: results.length,
-          symbol: query.symbol,
           dateRange: {
             start: startTime?.toISOString(),
             end: endTime?.toISOString(),
