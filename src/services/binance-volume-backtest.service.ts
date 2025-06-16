@@ -251,12 +251,14 @@ export class BinanceVolumeBacktestService {
 
       return {
         success: true,
+        granularityHours: params.granularityHours, // 回测时间粒度放在外层
         data: results.map((result) => ({
           timestamp: result.timestamp.toISOString(),
           hour: result.hour,
           volumeRankings: result.volumeRankings,
           priceChangeRankings: result.priceChangeRankings,
           volatilityRankings: result.volatilityRankings,
+          btcPrice: result.btcPrice, // 添加BTC价格
           marketStats: {
             totalVolume: result.totalMarketVolume,
             totalQuoteVolume: result.totalMarketQuoteVolume,
@@ -1292,6 +1294,40 @@ export class BinanceVolumeBacktestService {
         batchSize: this.CONCURRENCY_CONFIG.KLINE_LOADING.batchSize,
       });
 
+      // 获取BTC现货价格（带重试机制）
+      let btcPrice = 0;
+      const maxRetries = 3;
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          const btcKlines = await this.binanceService.getKlines({
+            symbol: 'BTCUSDT',
+            interval: '1h',
+            startTime: currentTime.getTime(),
+            endTime: currentTime.getTime() + 60 * 60 * 1000, // +1小时
+            limit: 1,
+          });
+          
+          if (btcKlines && btcKlines.length > 0) {
+            btcPrice = parseFloat(btcKlines[0].close);
+            this.logger.debug(`📈 BTC价格 (${currentTime.toISOString()}): $${btcPrice.toFixed(2)}`);
+            break; // 成功获取，跳出重试循环
+          } else {
+            this.logger.warn(`⚠️ 无法获取BTC价格数据: ${currentTime.toISOString()} (尝试 ${attempt}/${maxRetries})`);
+          }
+        } catch (error) {
+          const isLastAttempt = attempt === maxRetries;
+          if (isLastAttempt) {
+            this.logger.error(`❌ 获取BTC价格最终失败 (已重试${maxRetries}次): ${error.message}`);
+            // 如果获取BTC价格失败，继续执行，但价格设为0
+            btcPrice = 0;
+          } else {
+            this.logger.warn(`⚠️ 获取BTC价格失败，正在重试 (${attempt}/${maxRetries}): ${error.message}`);
+            // 等待后重试
+            await this.delay(1000 * attempt); // 1s, 2s, 3s递增延迟
+          }
+        }
+      }
+
       // 计算排行榜
       const volumeRankings = this.calculateRankings(
         volumeWindows,
@@ -1326,11 +1362,13 @@ export class BinanceVolumeBacktestService {
           volatilityRankings,
           totalMarketVolume: marketStats.totalVolume,
           totalMarketQuoteVolume: marketStats.totalQuoteVolume,
+          btcPrice, // 添加BTC价格
           calculationDuration: Date.now() - periodStart,
           createdAt: new Date(),
         });
 
         this.logger.log(`💾 ${currentTime.toISOString()} 排行榜已保存:`);
+        this.logger.log(`   📈 BTC价格: $${btcPrice.toFixed(2)}`);
         this.logger.log(
           `   📊 成交量前3名: ${volumeRankings
             .slice(0, 3)

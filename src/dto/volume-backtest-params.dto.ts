@@ -87,16 +87,25 @@ export class VolumeBacktestQueryDto {
   @Max(100)
   @Transform(({ value }) => parseInt(value))
   limit?: number = 50;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(24)
+  @Transform(({ value }) => parseInt(value))
+  granularityHours?: number = 8; // 回测粒度（小时），用于显示
 }
 
 export interface VolumeBacktestResponse {
   success: boolean;
+  granularityHours: number; // 回测时间段（小时），放在外层
   data: {
     timestamp: string;
     hour: number;
     volumeRankings: HourlyVolumeRankingItem[];
     priceChangeRankings: HourlyPriceChangeRankingItem[];
     volatilityRankings: HourlyVolatilityRankingItem[];
+    btcPrice: number; // BTC现货价格
     marketStats: {
       totalVolume: number;
       totalQuoteVolume: number;

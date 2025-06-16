@@ -26,6 +26,9 @@ export class VolumeBacktest {
   @Prop({ required: true })
   totalMarketQuoteVolume: number;
 
+  @Prop({ required: true })
+  btcPrice: number; // BTC现货价格
+
   @Prop({ default: Date.now })
   createdAt: Date;
 

@@ -104,11 +104,22 @@ export class BinanceVolumeBacktestController {
         endTime,
       );
 
+      // 从结果数据中计算 granularityHours
+      let granularityHours = 8; // 默认值
+      if (results.length >= 2) {
+        // 计算前两个结果的时间间隔（毫秒）
+        const timeDiff = results[1].timestamp.getTime() - results[0].timestamp.getTime();
+        // 转换为小时
+        granularityHours = Math.round(timeDiff / (1000 * 60 * 60));
+      }
+
       return {
         success: true,
+        granularityHours, // 从数据中计算得出的回测时间粒度
         data: results.map((result) => ({
           timestamp: result.timestamp.toISOString(),
           hour: result.hour,
+          btcPrice: result.btcPrice,
           volumeRankings: query.limit
             ? result.volumeRankings.slice(0, query.limit)
             : result.volumeRankings,
@@ -122,7 +133,7 @@ export class BinanceVolumeBacktestController {
             totalVolume: result.totalMarketVolume,
             totalQuoteVolume: result.totalMarketQuoteVolume,
           },
-          calculationTime: result.calculationDuration,
+          // calculationTime: result.calculationDuration,
         })),
         meta: {
           count: results.length,
