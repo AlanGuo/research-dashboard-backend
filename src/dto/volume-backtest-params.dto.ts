@@ -107,7 +107,6 @@ export interface VolumeBacktestResponse {
     marketStats: {
       totalVolume: number;
       totalQuoteVolume: number;
-      activePairs: number;
       topMarketConcentration: number; // 前10名市场集中度
     };
     calculationTime: number;

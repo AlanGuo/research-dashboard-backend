@@ -260,7 +260,6 @@ export class BinanceVolumeBacktestService {
           marketStats: {
             totalVolume: result.totalMarketVolume,
             totalQuoteVolume: result.totalMarketQuoteVolume,
-            activePairs: result.activePairs,
             topMarketConcentration: this.calculateMarketConcentration(
               result.volumeRankings,
             ),
@@ -598,7 +597,6 @@ export class BinanceVolumeBacktestService {
         (sum, item) => sum + item.quoteVolume24h,
         0,
       ),
-      activePairs: volumeRankings.length,
     };
   }
 
@@ -1328,7 +1326,6 @@ export class BinanceVolumeBacktestService {
           volatilityRankings,
           totalMarketVolume: marketStats.totalVolume,
           totalMarketQuoteVolume: marketStats.totalQuoteVolume,
-          activePairs: marketStats.activePairs,
           calculationDuration: Date.now() - periodStart,
           createdAt: new Date(),
         });

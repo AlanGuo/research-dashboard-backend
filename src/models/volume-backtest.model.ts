@@ -26,9 +26,6 @@ export class VolumeBacktest {
   @Prop({ required: true })
   totalMarketQuoteVolume: number;
 
-  @Prop({ required: true })
-  activePairs: number;
-
   @Prop({ default: Date.now })
   createdAt: Date;
 

@@ -124,7 +124,6 @@ export class BinanceVolumeBacktestController {
           marketStats: {
             totalVolume: result.totalMarketVolume,
             totalQuoteVolume: result.totalMarketQuoteVolume,
-            activePairs: result.activePairs,
           },
           calculationTime: result.calculationDuration,
         })),
