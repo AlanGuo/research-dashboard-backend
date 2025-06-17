@@ -255,6 +255,7 @@ export class BinanceVolumeBacktestService {
           timestamp: result.timestamp.toISOString(),
           hour: result.hour,
           rankings: result.rankings, // 使用合并后的rankings
+          removedSymbols: result.removedSymbols || [], // 从上一期排名中移除的交易对
           btcPrice: result.btcPrice, // 添加BTC价格
           btcPriceChange24h: result.btcPriceChange24h, // 添加BTC价格变化率
           marketStats: {
@@ -525,17 +526,26 @@ export class BinanceVolumeBacktestService {
     result: VolumeBacktest,
   ): Promise<void> {
     try {
-      const savedResult = new this.volumeBacktestModel(result);
-      await savedResult.save();
+      // 使用 findOneAndUpdate 来实现 upsert（如果存在则更新，不存在则创建）
+      await this.volumeBacktestModel.findOneAndUpdate(
+        { timestamp: result.timestamp }, // 查找条件
+        result, // 更新数据
+        { 
+          upsert: true, // 如果不存在则创建
+          new: true, // 返回更新后的文档
+          overwrite: true // 完全覆盖现有文档
+        }
+      );
+      
+      this.logger.debug(
+        `💾 数据已保存/更新: ${result.timestamp.toISOString()}`,
+      );
     } catch (error) {
-      // 检查是否是重复数据错误
-      if (error.code === 11000) {
-        this.logger.warn(
-          `⚠️ 数据已存在，跳过保存: ${result.timestamp.toISOString()}`,
-        );
-      } else {
-        throw error;
-      }
+      this.logger.error(
+        `❌ 保存数据失败: ${result.timestamp.toISOString()}`,
+        error,
+      );
+      throw error;
     }
   }
 
@@ -560,6 +570,404 @@ export class BinanceVolumeBacktestService {
     }
 
     return this.volumeBacktestModel.find(query).sort({ timestamp: 1 }).exec();
+  }
+
+  /**
+   * 补充现有回测数据的removedSymbols字段
+   * 用于为已存在的回测结果添加从上一期排名中移除的交易对信息
+   */
+  async supplementRemovedSymbols(
+    startTime: Date,
+    endTime: Date,
+    granularityHours: number = 8,
+  ): Promise<{
+    success: boolean;
+    processedCount: number;
+    skippedCount: number;
+    errorCount: number;
+    totalTime: number;
+  }> {
+    const startExecution = Date.now();
+    let processedCount = 0;
+    let skippedCount = 0;
+    let errorCount = 0;
+
+    this.logger.log(
+      `🔄 开始补充removedSymbols数据: ${startTime.toISOString()} - ${endTime.toISOString()}`,
+    );
+
+    try {
+      // 获取指定时间范围内的所有回测结果，按时间排序
+      const backtestResults = await this.volumeBacktestModel
+        .find({
+          timestamp: { $gte: startTime, $lte: endTime },
+        })
+        .sort({ timestamp: 1 })
+        .exec();
+
+      if (backtestResults.length === 0) {
+        this.logger.warn('⚠️ 指定时间范围内没有找到回测数据');
+        return {
+          success: true,
+          processedCount: 0,
+          skippedCount: 0,
+          errorCount: 0,
+          totalTime: Date.now() - startExecution,
+        };
+      }
+
+      this.logger.log(`📊 找到 ${backtestResults.length} 条回测数据，开始处理...`);
+
+      // 遍历每条记录，从第二条开始处理（第一条没有"上一期"）
+      for (let i = 1; i < backtestResults.length; i++) {
+        const currentResult = backtestResults[i];
+        const previousResult = backtestResults[i - 1];
+
+        try {
+          // 检查时间间隔是否符合granularityHours
+          const timeDiff = (currentResult.timestamp.getTime() - previousResult.timestamp.getTime()) / (1000 * 60 * 60);
+          if (Math.abs(timeDiff - granularityHours) > 1) {
+            this.logger.debug(
+              `⏭️ 跳过 ${currentResult.timestamp.toISOString()}: 时间间隔不匹配 (${timeDiff.toFixed(1)}h != ${granularityHours}h)`,
+            );
+            skippedCount++;
+            continue;
+          }
+
+          // 检查是否已经有removedSymbols数据
+          if (currentResult.removedSymbols && currentResult.removedSymbols.length > 0) {
+            this.logger.debug(
+              `⏭️ 跳过 ${currentResult.timestamp.toISOString()}: 已有removedSymbols数据`,
+            );
+            skippedCount++;
+            continue;
+          }
+
+          // 找出从上一期排名中移除的交易对
+          const previousSymbols = new Set(previousResult.rankings.map(r => r.symbol));
+          const currentSymbols = new Set(currentResult.rankings.map(r => r.symbol));
+          const removedSymbolNames = Array.from(previousSymbols).filter(
+            symbol => !currentSymbols.has(symbol)
+          );
+
+          if (removedSymbolNames.length === 0) {
+            this.logger.debug(
+              `✅ ${currentResult.timestamp.toISOString()}: 无移除的交易对`,
+            );
+            skippedCount++;
+            continue;
+          }
+
+          this.logger.log(
+            `🔍 ${currentResult.timestamp.toISOString()}: 找到 ${removedSymbolNames.length} 个移除的交易对: ${removedSymbolNames.slice(0, 3).join(', ')}${removedSymbolNames.length > 3 ? '...' : ''}`,
+          );
+
+          // 为这些移除的交易对获取当前时间点的数据
+          const removedSymbolsData = await this.getRemovedSymbolsData(
+            removedSymbolNames,
+            currentResult.timestamp,
+          );
+
+          if (removedSymbolsData.length > 0) {
+            // 更新数据库记录
+            const updateResult = await this.volumeBacktestModel.updateOne(
+              { _id: currentResult._id },
+              { $set: { removedSymbols: removedSymbolsData } }
+            );
+
+            if (updateResult.modifiedCount > 0) {
+              this.logger.log(
+                `✅ ${currentResult.timestamp.toISOString()}: 成功添加 ${removedSymbolsData.length} 个removedSymbols`,
+              );
+              processedCount++;
+            } else {
+              this.logger.warn(
+                `⚠️ ${currentResult.timestamp.toISOString()}: 数据库更新失败`,
+              );
+              errorCount++;
+            }
+          } else {
+            this.logger.warn(
+              `⚠️ ${currentResult.timestamp.toISOString()}: 无法获取移除交易对的数据`,
+            );
+            skippedCount++;
+          }
+
+          // 添加延迟避免API限制
+          await this.delay(this.configService.binanceRequestDelay);
+
+        } catch (error) {
+          this.logger.error(
+            `❌ 处理 ${currentResult.timestamp.toISOString()} 时出错: ${error.message}`,
+          );
+          errorCount++;
+        }
+      }
+
+      const totalTime = Date.now() - startExecution;
+      this.logger.log(
+        `🎉 补充removedSymbols完成! 处理: ${processedCount}, 跳过: ${skippedCount}, 错误: ${errorCount}, 耗时: ${(totalTime / 1000).toFixed(1)}s`,
+      );
+
+      return {
+        success: true,
+        processedCount,
+        skippedCount,
+        errorCount,
+        totalTime,
+      };
+
+    } catch (error) {
+      this.logger.error('❌ 补充removedSymbols失败:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 获取移除交易对在指定时间点的数据
+   */
+  private async getRemovedSymbolsData(
+    symbols: string[],
+    timestamp: Date,
+  ): Promise<HourlyRankingItem[]> {
+    const removedSymbolsData: HourlyRankingItem[] = [];
+
+    // 分批处理以避免API限制
+    const batchSize = 10;
+    for (let i = 0; i < symbols.length; i += batchSize) {
+      const batch = symbols.slice(i, i + batchSize);
+      
+      const batchResults = await Promise.allSettled(
+        batch.map(async (symbol) => {
+          try {
+            // 创建临时的滑动窗口来获取24小时数据
+            const volumeWindow: VolumeWindow = {
+              symbol,
+              data: [],
+              volume24h: 0,
+              quoteVolume24h: 0,
+            };
+
+            // 获取24小时数据窗口
+            const windowStart = new Date(timestamp.getTime() - 24 * 60 * 60 * 1000);
+            const klineData = await this.loadSymbolKlines(symbol, windowStart, timestamp);
+
+            if (klineData && klineData.length > 0) {
+              volumeWindow.data = klineData;
+              this.updateWindowVolume(volumeWindow);
+
+              // 计算价格和波动率数据
+              const latestKline = klineData[klineData.length - 1];
+              const earliestKline = klineData[0];
+              
+              const priceAtTime = parseFloat(latestKline.close);
+              const price24hAgo = parseFloat(earliestKline.open);
+              const priceChange24h = ((priceAtTime - price24hAgo) / price24hAgo) * 100;
+
+              // 计算24小时最高价和最低价
+              const high24h = Math.max(...klineData.map(k => parseFloat(k.high)));
+              const low24h = Math.min(...klineData.map(k => parseFloat(k.low)));
+              const volatility24h = ((high24h - low24h) / low24h) * 100;
+
+              // 提取基础资产和计价资产
+              const baseAsset = this.extractBaseAsset(symbol);
+              const quoteAsset = symbol.replace(baseAsset, '');
+
+              const symbolData: HourlyRankingItem = {
+                rank: 0, // 将在后续设置
+                symbol,
+                baseAsset,
+                quoteAsset,
+                priceChange24h,
+                priceAtTime,
+                price24hAgo,
+                volume24h: volumeWindow.volume24h,
+                quoteVolume24h: volumeWindow.quoteVolume24h,
+                marketShare: 0, // 被移除的交易对市场份额设为0
+                volatility24h,
+                high24h,
+                low24h,
+              };
+
+              return symbolData;
+            }
+            return null;
+          } catch (error) {
+            this.logger.warn(`⚠️ 获取 ${symbol} 数据失败: ${error.message}`);
+            return null;
+          }
+        })
+      );
+
+      // 处理批次结果
+      batchResults.forEach((result, index) => {
+        if (result.status === 'fulfilled' && result.value) {
+          removedSymbolsData.push(result.value);
+        }
+      });
+
+      // 批次间延迟
+      if (i + batchSize < symbols.length) {
+        await this.delay(this.configService.binanceRequestDelay * 2);
+      }
+    }
+
+    // 按价格跌幅排序（与主排行榜保持一致）
+    removedSymbolsData.sort((a, b) => a.priceChange24h - b.priceChange24h);
+
+    // 设置排名
+    removedSymbolsData.forEach((item, index) => {
+      item.rank = index + 1;
+    });
+
+    return removedSymbolsData;
+  }
+
+  /**
+   * 计算从上一期排名中移除的交易对数据
+   * 在实时计算中使用，避免后续补充操作
+   */
+  private async calculateRemovedSymbols(
+    currentTime: Date,
+    currentRankings: HourlyRankingItem[],
+    params: VolumeBacktestParamsDto,
+  ): Promise<HourlyRankingItem[]> {
+    try {
+      // 计算上一期时间点
+      const granularityHours = params.granularityHours || 8;
+      const previousTime = new Date(currentTime.getTime() - granularityHours * 60 * 60 * 1000);
+      
+      // 查询上一期的排名数据
+      const previousResult = await this.volumeBacktestModel
+        .findOne({ timestamp: previousTime })
+        .exec();
+
+      // 如果没有上一期数据，需要实时计算上一期的排名
+      if (!previousResult || !previousResult.rankings) {
+        this.logger.debug(`📊 ${currentTime.toISOString()}: 无上一期数据 (${previousTime.toISOString()})，实时计算上一期排名`);
+        
+        // 实时计算上一期排名来获取removedSymbols
+        const previousRankings = await this.calculatePreviousPeriodRanking(previousTime, params);
+        
+        if (previousRankings.length === 0) {
+          return [];
+        }
+
+        // 找出从上一期排名中移除的交易对
+        const previousSymbols = new Set(previousRankings.map(r => r.symbol));
+        const currentSymbols = new Set(currentRankings.map(r => r.symbol));
+        const removedSymbolNames = Array.from(previousSymbols).filter(
+          symbol => !currentSymbols.has(symbol)
+        );
+
+        if (removedSymbolNames.length === 0) {
+          return [];
+        }
+
+        this.logger.debug(
+          `🔍 ${currentTime.toISOString()}: 通过实时计算发现 ${removedSymbolNames.length} 个移除的交易对`,
+        );
+
+        // 获取这些移除交易对的当前时间点数据
+        const removedSymbolsData = await this.getRemovedSymbolsData(
+          removedSymbolNames,
+          currentTime,
+        );
+
+        return removedSymbolsData;
+      }
+
+      // 找出从上一期排名中移除的交易对
+      const previousSymbols = new Set(previousResult.rankings.map(r => r.symbol));
+      const currentSymbols = new Set(currentRankings.map(r => r.symbol));
+      const removedSymbolNames = Array.from(previousSymbols).filter(
+        symbol => !currentSymbols.has(symbol)
+      );
+
+      if (removedSymbolNames.length === 0) {
+        return [];
+      }
+
+      this.logger.debug(
+        `🔍 ${currentTime.toISOString()}: 发现 ${removedSymbolNames.length} 个移除的交易对`,
+      );
+
+      // 获取这些移除交易对的当前时间点数据
+      const removedSymbolsData = await this.getRemovedSymbolsData(
+        removedSymbolNames,
+        currentTime,
+      );
+
+      return removedSymbolsData;
+    } catch (error) {
+      this.logger.warn(
+        `⚠️ 计算removedSymbols失败 (${currentTime.toISOString()}): ${error.message}`,
+      );
+      return []; // 发生错误时返回空数组，不影响主流程
+    }
+  }
+
+  private async calculatePreviousPeriodRanking(
+    previousTime: Date,
+    params: VolumeBacktestParamsDto,
+  ): Promise<HourlyRankingItem[]> {
+    try {
+      this.logger.debug(`🔄 实时计算上一期 ${previousTime.toISOString()} 的排名`);
+
+      // 找到上一期时间对应的周一时间点
+      const weekStart = this.findMondayForTime(previousTime);
+      const weekKey = weekStart.toISOString().slice(0, 10);
+      
+      // 获取该周的筛选条件哈希（使用传入的参数）
+      const weeklyFilterHash = this.generateFilterHash(weekStart, params);
+      const symbolFilter = await this.getFilterFromCache(weeklyFilterHash);
+      
+      if (!symbolFilter || symbolFilter.valid.length === 0) {
+        this.logger.warn(`⚠️ 无法获取 ${weekKey} 周的交易对列表`);
+        return [];
+      }
+
+      const symbols = symbolFilter.valid;
+      this.logger.debug(`📊 使用 ${symbols.length} 个交易对计算上一期排名`);
+
+      // 创建临时的滑动窗口
+      const volumeWindows = new Map<string, VolumeWindow>();
+
+      // 初始化每个交易对的窗口
+      for (const symbol of symbols) {
+        volumeWindows.set(symbol, {
+          symbol,
+          data: [],
+          volume24h: 0,
+          quoteVolume24h: 0,
+        });
+      }
+
+      // 预加载24小时数据窗口
+      const windowStart = new Date(previousTime.getTime() - 24 * 60 * 60 * 1000);
+      await this.preloadVolumeWindows(volumeWindows, windowStart, previousTime, {
+        maxConcurrency: this.CONCURRENCY_CONFIG.KLINE_LOADING.maxConcurrency,
+        batchSize: this.CONCURRENCY_CONFIG.KLINE_LOADING.batchSize,
+      });
+
+      // 计算排行榜
+      const rankings = this.calculateRankings(
+        volumeWindows,
+        params.limit || 50,
+        params.minVolumeThreshold || 0,
+      );
+
+      this.logger.debug(
+        `✅ 成功计算上一期排名: ${rankings.length} 个交易对`,
+      );
+
+      return rankings;
+    } catch (error) {
+      this.logger.error(
+        `❌ 计算上一期排名失败 (${previousTime.toISOString()}): ${error.message}`,
+      );
+      return [];
+    }
   }
 
   /**
@@ -1271,12 +1679,20 @@ export class BinanceVolumeBacktestService {
       // 计算市场统计
       const marketStats = this.calculateMarketStats(rankings);
 
+      // 计算 removedSymbols（从上一期排名中移除的交易对）
+      const removedSymbols = await this.calculateRemovedSymbols(
+        currentTime,
+        rankings,
+        params,
+      );
+
       // 保存结果
       if (rankings.length > 0) {
         await this.saveSingleBacktestResult({
           timestamp: currentTime,
           hour: currentTime.getUTCHours(), // 使用UTC时间的小时数
           rankings: rankings, // 使用合并后的rankings
+          removedSymbols: removedSymbols, // 实时计算的removedSymbols
           totalMarketVolume: marketStats.totalVolume,
           totalMarketQuoteVolume: marketStats.totalQuoteVolume,
           btcPrice, // 添加BTC价格
@@ -1293,6 +1709,14 @@ export class BinanceVolumeBacktestService {
             .map((r) => `${r.symbol}(${r.priceChange24h.toFixed(2)}%)`)
             .join(", ")}`,
         );
+        if (removedSymbols.length > 0) {
+          this.logger.log(
+            `   🗑️ 移除交易对: ${removedSymbols.length}个 [${removedSymbols
+              .slice(0, 3)
+              .map((r) => `${r.symbol}(${r.priceChange24h.toFixed(2)}%)`)
+              .join(", ")}${removedSymbols.length > 3 ? '...' : ''}]`,
+          );
+        }
       } else {
         this.logger.warn(
           `⚠️ ${currentTime.toISOString()} 没有生成有效的排行榜数据`,

@@ -14,6 +14,9 @@ export class VolumeBacktest {
   @Prop({ type: [Object], required: true })
   rankings: HourlyRankingItem[]; // 合并后的排行榜，按涨跌幅排序（跌幅最大的在前）
 
+  @Prop({ type: [Object], default: [] })
+  removedSymbols?: HourlyRankingItem[]; // 从上一期排名中移除的交易对及其当前时间点的数据
+
   @Prop({ required: true })
   totalMarketVolume: number;
 

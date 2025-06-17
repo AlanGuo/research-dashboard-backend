@@ -84,16 +84,24 @@ export class VolumeBacktestQueryDto {
   @IsOptional()
   @IsNumber()
   @Min(1)
-  @Max(100)
+  @Max(24)
   @Transform(({ value }) => parseInt(value))
-  limit?: number = 50;
+  granularityHours?: number = 8; // 回测粒度（小时），用于显示
+}
+
+export class SupplementRemovedSymbolsDto {
+  @IsDateString()
+  startTime: string; // 开始时间 (ISO 8601 格式)
+
+  @IsDateString()
+  endTime: string; // 结束时间 (ISO 8601 格式)
 
   @IsOptional()
   @IsNumber()
   @Min(1)
   @Max(24)
   @Transform(({ value }) => parseInt(value))
-  granularityHours?: number = 8; // 回测粒度（小时），用于显示
+  granularityHours?: number = 8; // 回测粒度（小时），默认8小时
 }
 
 export interface VolumeBacktestResponse {
@@ -103,6 +111,7 @@ export interface VolumeBacktestResponse {
     timestamp: string;
     hour: number;
     rankings: HourlyRankingItem[]; // 合并后的排行榜，按涨跌幅排序（跌幅最大的在前）
+    removedSymbols: HourlyRankingItem[]; // 从上一期排名中移除的交易对及其当前时间点的数据
     btcPrice: number; // BTC现货价格
     btcPriceChange24h: number; // BTC相对24小时前价格的变化率（百分比）
     marketStats: {
