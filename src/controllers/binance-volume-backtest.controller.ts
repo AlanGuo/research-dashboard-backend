@@ -197,22 +197,4 @@ export class BinanceVolumeBacktestController {
       );
     }
   }
-
-  /**
-   * 测试期货API功能
-   * GET /v1/binance/volume-backtest/test-futures-features
-   */
-  @Get("test-futures-features")
-  async testFuturesApiFeatures(): Promise<any> {
-    try {
-      const result = await this.volumeBacktestService.testFuturesApiFeatures();
-      return result;
-    } catch (error) {
-      this.logger.error("测试期货API功能失败:", error);
-      throw new HttpException(
-        error.message || "测试期货API功能失败",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
-  }
 }

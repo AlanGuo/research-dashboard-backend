@@ -58,6 +58,7 @@ export interface HourlyRankingItem {
   volatility24h: number; // 24小时波动率百分比
   high24h: number; // 24小时最高价
   low24h: number; // 24小时最低价
+  futureSymbol?: string; // 对应的期货交易对symbol（如果与现货不同）
   futurePriceAtTime?: number; // 期货价格（当前时间点）
   fundingRateHistory?: FundingRateHistoryItem[]; // 对应时间段的资金费率历史
 }

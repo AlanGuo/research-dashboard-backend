@@ -573,7 +573,7 @@ export class BinanceVolumeBacktestService {
    */
   private async addFundingRateHistory(
     result: VolumeBacktest,
-    granularityHours: number = 8,
+    granularityHours: number,
   ): Promise<VolumeBacktest> {
     try {
       // 计算时间范围：从当前时间（不包含）到下一个granularityHours时间点（包含）
@@ -1011,16 +1011,33 @@ export class BinanceVolumeBacktestService {
         );
       }
 
-      // 获取期货价格
+      // 为每个ranking项设置futureSymbol并准备期货symbols列表
+      const futureSymbolsToQuery: string[] = [];
+      const symbolToFutureSymbolMap: { [key: string]: string } = {};
+
+      for (const ranking of rankings) {
+        // 使用binanceService的映射方法获取期货symbol
+        const futureSymbol = await this.binanceService.mapToFuturesSymbol(ranking.symbol);
+        if (futureSymbol) {
+          ranking.futureSymbol = futureSymbol !== ranking.symbol ? futureSymbol : undefined;
+          futureSymbolsToQuery.push(futureSymbol);
+          symbolToFutureSymbolMap[ranking.symbol] = futureSymbol;
+        }
+      }
+
+      // 获取期货价格（使用实际的期货symbol）
       const futuresPrices = await this.getFuturesPricesForSymbols(
-        rankings.map((r) => r.symbol),
+        futureSymbolsToQuery,
         timestamp,
         futuresSymbols
       );
 
       // 为每个排名项添加期货价格
       rankings.forEach((ranking) => {
-        ranking.futurePriceAtTime = futuresPrices[ranking.symbol] || undefined;
+        const futureSymbol = symbolToFutureSymbolMap[ranking.symbol];
+        if (futureSymbol) {
+          ranking.futurePriceAtTime = futuresPrices[futureSymbol] || undefined;
+        }
       });
 
       const withFuturesCount = rankings.filter(r => r.futurePriceAtTime !== undefined).length;
@@ -1149,68 +1166,6 @@ export class BinanceVolumeBacktestService {
    */
   async testFuturesApi(): Promise<any> {
     return await this.binanceService.testFuturesConnectivity();
-  }
-
-  /**
-   * 测试期货API功能
-   */
-  async testFuturesApiFeatures(): Promise<any> {
-    try {
-      this.logger.log("🧪 开始测试期货API功能...");
-
-      // 1. 测试获取期货交易所信息
-      const futuresInfo = await this.binanceService.getFuturesExchangeInfo();
-      const perpetualContracts = futuresInfo.symbols
-        .filter((s: any) => s.status === "TRADING" && s.contractType === "PERPETUAL")
-        .map((s: any) => s.symbol);
-
-      this.logger.log(`✅ 期货交易所信息: ${perpetualContracts.length} 个永续合约`);
-
-      // 2. 测试获取期货K线数据 (使用BTCUSDT作为示例)
-      const testSymbol = "BTCUSDT";
-      const now = new Date();
-      const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
-
-      const futuresKlines = await this.binanceService.getFuturesKlines({
-        symbol: testSymbol,
-        interval: '1h',
-        startTime: oneHourAgo.getTime(),
-        endTime: now.getTime(),
-        limit: 1,
-      });
-
-      this.logger.log(`✅ 期货K线数据: ${testSymbol} 价格 ${futuresKlines[0]?.close}`);
-
-      // 3. 测试批量获取期货价格
-      const testSymbols = perpetualContracts.slice(0, 5);
-      const futuresSymbolsSet = new Set<string>(perpetualContracts);
-      const futuresPrices = await this.getFuturesPricesForSymbols(
-        testSymbols,
-        now,
-        futuresSymbolsSet
-      );
-
-      this.logger.log(`✅ 批量期货价格: 获取了 ${Object.keys(futuresPrices).length} 个价格`);
-
-      return {
-        success: true,
-        message: "期货API功能测试完成",
-        data: {
-          perpetualContractsCount: perpetualContracts.length,
-          sampleContracts: perpetualContracts.slice(0, 10),
-          testKlineData: futuresKlines[0],
-          testPrices: futuresPrices,
-        }
-      };
-
-    } catch (error) {
-      this.logger.error("❌ 期货API功能测试失败:", error);
-      return {
-        success: false,
-        message: `期货API功能测试失败: ${error.message}`,
-        error: error.message,
-      };
-    }
   }
 
   /**
