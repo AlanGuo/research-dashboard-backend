@@ -51,7 +51,7 @@ export class VolumeBacktestParamsDto {
 
   @IsOptional()
   @Transform(({ value }) => value === "true")
-  requireFutures?: boolean = false; // 是否要求有期货合约可做空
+  requireFutures?: boolean = true; // 是否要求有期货合约可做空
 
   @IsOptional()
   @Transform(({ value }) => value === "true")
@@ -64,12 +64,6 @@ export class VolumeBacktestParamsDto {
   @Transform(({ value }) => parseInt(value))
   granularityHours?: number = 8; // 回测粒度（小时），默认8小时
 
-  @IsOptional()
-  @IsNumber()
-  @Min(1)
-  @Max(20)
-  @Transform(({ value }) => parseInt(value))
-  concurrency?: number = 5; // 筛选并发数量，默认5个并发任务
 }
 
 export class VolumeBacktestQueryDto {
@@ -87,36 +81,6 @@ export class VolumeBacktestQueryDto {
   @Max(24)
   @Transform(({ value }) => parseInt(value))
   granularityHours?: number = 8; // 回测粒度（小时），用于显示
-}
-
-export class SupplementRemovedSymbolsDto {
-  @IsDateString()
-  startTime: string; // 开始时间 (ISO 8601 格式)
-
-  @IsDateString()
-  endTime: string; // 结束时间 (ISO 8601 格式)
-
-  @IsOptional()
-  @IsNumber()
-  @Min(1)
-  @Max(24)
-  @Transform(({ value }) => parseInt(value))
-  granularityHours?: number = 8; // 回测粒度（小时），默认8小时
-}
-
-export class SupplementFuturesPricesDto {
-  @IsDateString()
-  startTime: string; // 开始时间 (ISO 8601 格式)
-
-  @IsDateString()
-  endTime: string; // 结束时间 (ISO 8601 格式)
-
-  @IsOptional()
-  @IsNumber()
-  @Min(1)
-  @Max(24)
-  @Transform(({ value }) => parseInt(value))
-  granularityHours?: number = 8; // 回测粒度（小时），默认8小时
 }
 
 export interface VolumeBacktestResponse {
@@ -202,6 +166,13 @@ export interface HourlyVolatilityRankingItem {
   quoteVolume24h: number; // 过去24小时成交金额
 }
 
+// 资金费率历史项接口
+export interface FundingRateHistoryItem {
+  fundingTime: Date;
+  fundingRate: number;
+  markPrice: number;
+}
+
 // 合并排行榜项接口 - 包含价格变化、成交量和波动率信息
 export interface HourlyRankingItem {
   rank: number;
@@ -218,4 +189,5 @@ export interface HourlyRankingItem {
   high24h: number; // 24小时最高价
   low24h: number; // 24小时最低价
   futurePriceAtTime?: number; // 期货价格（当前时间点）
+  fundingRateHistory?: FundingRateHistoryItem[]; // 对应时间段的资金费率历史
 }

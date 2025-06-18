@@ -243,6 +243,23 @@ export class BinanceService {
   }
 
   /**
+   * 获取资金费率历史
+   */
+  async getFundingRateHistory(params: {
+    symbol: string;
+    startTime?: number;
+    endTime?: number;
+    limit?: number;
+  }): Promise<any[]> {
+    const context = `资金费率历史${params.symbol}`;
+
+    return this.callBinanceApi("/fapi/v1/fundingRate", params, {
+      context,
+      useFuturesApi: true,
+    });
+  }
+
+  /**
    * 检查交易对是否有对应的永续合约
    */
   async checkFuturesAvailability(

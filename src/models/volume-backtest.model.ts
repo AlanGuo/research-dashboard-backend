@@ -36,6 +36,13 @@ export class VolumeBacktest {
   calculationDuration: number; // 计算耗时(ms)
 }
 
+// 资金费率历史项接口
+export interface FundingRateHistoryItem {
+  fundingTime: Date;
+  fundingRate: number;
+  markPrice: number;
+}
+
 // 合并排行榜项接口 - 包含价格变化、成交量和波动率信息
 export interface HourlyRankingItem {
   rank: number;
@@ -52,6 +59,7 @@ export interface HourlyRankingItem {
   high24h: number; // 24小时最高价
   low24h: number; // 24小时最低价
   futurePriceAtTime?: number; // 期货价格（当前时间点）
+  fundingRateHistory?: FundingRateHistoryItem[]; // 对应时间段的资金费率历史
 }
 
 export const VolumeBacktestSchema =

@@ -40,6 +40,19 @@ interface VolumeWindow {
   quoteVolume24h: number;
 }
 
+interface FundingRateData {
+  symbol: string;
+  fundingTime: number;
+  fundingRate: number;
+  markPrice: number;
+}
+
+interface FundingRateHistoryItem {
+  fundingTime: Date;
+  fundingRate: number;
+  markPrice: number;
+}
+
 @Injectable()
 export class BinanceVolumeBacktestService {
   private readonly logger = new Logger(BinanceVolumeBacktestService.name);
@@ -51,6 +64,11 @@ export class BinanceVolumeBacktestService {
     KLINE_LOADING: {
       maxConcurrency: 12, // 较高并发，提升数据加载效率
       batchSize: 40, // 较大批次，减少网络往返次数
+    },
+    // 资金费率数据配置 (与fundingInfo共享500/5min/IP限制)
+    FUNDING_RATE: {
+      maxConcurrency: 5, // 保守的并发数，避免触发频率限制
+      batchSize: 20, // 较小批次，控制请求频率
     },
     // 通用批量处理配置 (用于其他场景)
     GENERAL: {
@@ -150,7 +168,7 @@ export class BinanceVolumeBacktestService {
         if (!symbolFilter) {
           // 缓存未命中，使用并发筛选
           this.logger.log(
-            `💾 周一 ${weekStart.toISOString().slice(0, 10)} 缓存未命中，启动并发筛选 (${params.concurrency || 5} 并发)...`,
+            `💾 周一 ${weekStart.toISOString().slice(0, 10)} 缓存未命中，启动并发筛选 (${this.CONCURRENCY_CONFIG.GENERAL.maxConcurrency } 并发)...`,
           );
           const concurrentResult = await this.filterSymbolsConcurrently(
             allActiveSymbols,
@@ -158,7 +176,7 @@ export class BinanceVolumeBacktestService {
               minHistoryDays: params.minHistoryDays || 365,
               requireFutures: params.requireFutures || false,
               excludeStablecoins: params.excludeStablecoins ?? true,
-              concurrency: params.concurrency || 5,
+              concurrency: this.CONCURRENCY_CONFIG.GENERAL.maxConcurrency,
               referenceTime: weekStart,
             },
           );
@@ -343,10 +361,6 @@ export class BinanceVolumeBacktestService {
             `✅ ${symbol} K线数据重试获取成功 - 第${attempt}次尝试，获得${klines?.length || 0}条数据`,
           );
         }
-        // 取消成功时的DEBUG日志，避免串行日志干扰
-        // else {
-        //   this.logger.debug(`✅ ${symbol} K线数据获取成功 - 获得${klines?.length || 0}条数据`);
-        // }
 
         return klines;
       } catch (error) {
@@ -524,12 +538,16 @@ export class BinanceVolumeBacktestService {
    */
   private async saveSingleBacktestResult(
     result: VolumeBacktest,
+    granularityHours?: number,
   ): Promise<void> {
     try {
+      // 在保存前添加资金费率历史数据
+      const enrichedResult = await this.addFundingRateHistory(result, granularityHours);
+
       // 使用 findOneAndUpdate 来实现 upsert（如果存在则更新，不存在则创建）
       await this.volumeBacktestModel.findOneAndUpdate(
-        { timestamp: result.timestamp }, // 查找条件
-        result, // 更新数据
+        { timestamp: enrichedResult.timestamp }, // 查找条件
+        enrichedResult, // 更新数据
         {
           upsert: true, // 如果不存在则创建
           new: true, // 返回更新后的文档
@@ -538,7 +556,7 @@ export class BinanceVolumeBacktestService {
       );
 
       this.logger.debug(
-        `💾 数据已保存/更新: ${result.timestamp.toISOString()}`,
+        `💾 数据已保存/更新: ${enrichedResult.timestamp.toISOString()}`,
       );
     } catch (error) {
       this.logger.error(
@@ -546,6 +564,80 @@ export class BinanceVolumeBacktestService {
         error,
       );
       throw error;
+    }
+  }
+
+  /**
+   * 为回测结果添加资金费率历史数据
+   * @param result 原始回测结果
+   * @param granularityHours 时间粒度（小时）
+   * @returns 包含资金费率历史的回测结果
+   */
+  private async addFundingRateHistory(
+    result: VolumeBacktest,
+    granularityHours: number = 8,
+  ): Promise<VolumeBacktest> {
+    try {
+      // 计算时间范围：从当前时间（不包含）到下一个granularityHours时间点（包含）
+      const currentTime = result.timestamp.getTime();
+      const startTime = currentTime + (1 * 60 * 60 * 1000); // 当前时间后1小时开始（不包含当前时间点）
+      const endTime = currentTime + (granularityHours * 60 * 60 * 1000); // granularityHours小时后（包含该时间点）
+
+      // 收集所有需要获取资金费率的交易对
+      const allSymbols = new Set<string>();
+      
+      // 添加rankings中的交易对
+      result.rankings.forEach(item => {
+        allSymbols.add(item.symbol);
+      });
+      
+      // 添加removedSymbols中的交易对
+      if (result.removedSymbols) {
+        result.removedSymbols.forEach(item => {
+          allSymbols.add(item.symbol);
+        });
+      }
+
+      const symbolsArray = Array.from(allSymbols);
+      this.logger.debug(
+        `📊 获取 ${symbolsArray.length} 个交易对的资金费率历史: ${result.timestamp.toISOString()}`,
+      );
+
+      // 批量获取资金费率历史
+      const fundingRateMap = await this.getFundingRateHistoryBatch(
+        symbolsArray,
+        startTime,
+        endTime,
+      );
+
+      // 为rankings添加资金费率历史
+      const enrichedRankings = result.rankings.map(item => ({
+        ...item,
+        fundingRateHistory: fundingRateMap.get(item.symbol) || [],
+      }));
+
+      // 为removedSymbols添加资金费率历史
+      const enrichedRemovedSymbols = result.removedSymbols?.map(item => ({
+        ...item,
+        fundingRateHistory: fundingRateMap.get(item.symbol) || [],
+      })) || [];
+
+      this.logger.debug(
+        `✅ 资金费率历史添加完成: 成功获取 ${fundingRateMap.size}/${symbolsArray.length} 个交易对的数据`,
+      );
+
+      return {
+        ...result,
+        rankings: enrichedRankings,
+        removedSymbols: enrichedRemovedSymbols,
+      };
+    } catch (error) {
+      this.logger.error(
+        `❌ 添加资金费率历史失败: ${result.timestamp.toISOString()}`,
+        error,
+      );
+      // 如果资金费率获取失败，仍然保存原始数据
+      return result;
     }
   }
 
@@ -856,7 +948,7 @@ export class BinanceVolumeBacktestService {
     this.logger.debug(`🔍 获取 ${availableSymbols.length}/${symbols.length} 个交易对的期货价格 (时间: ${timestamp.toISOString()})`);
 
     // 分批获取期货价格，避免API限制
-    const batchSize = 15;
+    const batchSize = this.CONCURRENCY_CONFIG.GENERAL.batchSize;
     for (let i = 0; i < availableSymbols.length; i += batchSize) {
       const batch = availableSymbols.slice(i, i + batchSize);
 
@@ -967,6 +1059,96 @@ export class BinanceVolumeBacktestService {
    */
   private delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * 获取指定时间段内的资金费率历史
+   * @param symbol 交易对符号 (如 BTCUSDT)
+   * @param startTime 开始时间戳 (ms)
+   * @param endTime 结束时间戳 (ms)
+   * @returns 资金费率历史数组
+   */
+  private async getFundingRateHistory(
+    symbol: string,
+    startTime: number,
+    endTime: number,
+  ): Promise<FundingRateHistoryItem[]> {
+    try {
+      const data: FundingRateData[] = await this.binanceService.getFundingRateHistory({
+        symbol,
+        startTime,
+        endTime,
+        limit: 1000,
+      });
+      
+      return data.map(item => ({
+        fundingTime: new Date(item.fundingTime),
+        fundingRate: parseFloat(item.fundingRate.toString()),
+        markPrice: parseFloat(item.markPrice.toString()),
+      }));
+    } catch (error) {
+      this.logger.error(`❌ 获取资金费率历史失败: ${symbol}`, error);
+      return [];
+    }
+  }
+
+  /**
+   * 批量获取多个交易对的资金费率历史
+   * @param symbols 交易对数组
+   * @param startTime 开始时间戳 (ms)
+   * @param endTime 结束时间戳 (ms)
+   * @returns 资金费率历史映射 (symbol -> FundingRateHistoryItem[])
+   */
+  private async getFundingRateHistoryBatch(
+    symbols: string[],
+    startTime: number,
+    endTime: number,
+  ): Promise<Map<string, FundingRateHistoryItem[]>> {
+    const fundingRateMap = new Map<string, FundingRateHistoryItem[]>();
+    
+    // 由于资金费率API有严格的频率限制(500/5min/IP)，我们使用更保守的方式
+    // 采用分批处理，每批之间有延迟
+    const batchSize = this.CONCURRENCY_CONFIG.FUNDING_RATE.batchSize;
+    const batches = [];
+    
+    for (let i = 0; i < symbols.length; i += batchSize) {
+      batches.push(symbols.slice(i, i + batchSize));
+    }
+
+    this.logger.debug(`📊 分${batches.length}批获取资金费率，每批${batchSize}个交易对`);
+
+    for (let i = 0; i < batches.length; i++) {
+      const batch = batches[i];
+      
+      // 批次间延迟，避免触发API限制
+      if (i > 0) {
+        await this.delay(2000); // 2秒延迟
+      }
+
+      const { results } = await this.processConcurrentlyWithPool(
+        batch,
+        async (symbol: string) => {
+          const history = await this.getFundingRateHistory(symbol, startTime, endTime);
+          return { symbol, history };
+        },
+        {
+          maxConcurrency: this.CONCURRENCY_CONFIG.FUNDING_RATE.maxConcurrency,
+          retryFailedItems: true,
+          maxRetries: 2,
+        },
+      );
+
+      for (const [symbol, result] of results) {
+        if (result && result.history) {
+          fundingRateMap.set(result.symbol, result.history);
+        }
+      }
+
+      this.logger.debug(`📊 批次${i + 1}/${batches.length}完成，累计成功: ${fundingRateMap.size}个`);
+    }
+
+    this.logger.debug(`📊 批量获取资金费率完成: ${symbols.length}个交易对, 成功: ${fundingRateMap.size}个`);
+    return fundingRateMap;
   }
 
   /**
@@ -1761,7 +1943,7 @@ export class BinanceVolumeBacktestService {
           btcPriceChange24h, // 添加BTC价格变化率
           calculationDuration: Date.now() - periodStart,
           createdAt: new Date(),
-        });
+        }, params.granularityHours);
 
         this.logger.log(`💾 ${currentTime.toISOString()} 排行榜已保存:`);
         this.logger.log(`   📈 BTC价格: $${btcPrice.toFixed(2)} (24h: ${btcPriceChange24h > 0 ? '+' : ''}${btcPriceChange24h.toFixed(2)}%)`);

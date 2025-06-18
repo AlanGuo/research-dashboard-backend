@@ -13,8 +13,6 @@ import {
   VolumeBacktestParamsDto,
   VolumeBacktestQueryDto,
   VolumeBacktestResponse,
-  SupplementRemovedSymbolsDto,
-  SupplementFuturesPricesDto,
 } from "../dto/volume-backtest-params.dto";
 
 @Controller("/v1/binance/volume-backtest")
