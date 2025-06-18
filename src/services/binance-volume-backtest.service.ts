@@ -578,17 +578,17 @@ export class BinanceVolumeBacktestService {
     try {
       // 计算时间范围：从当前时间（不包含）到下一个granularityHours时间点（包含）
       const currentTime = result.timestamp.getTime();
-      const startTime = currentTime + (1 * 60 * 60 * 1000); // 当前时间后1小时开始（不包含当前时间点）
-      const endTime = currentTime + (granularityHours * 60 * 60 * 1000); // granularityHours小时后（包含该时间点）
+      const startTime = currentTime + (0.5 * 60 * 60 * 1000); // 当前时间后30分钟后开始（不包含当前时间点）
+      const endTime = currentTime + ((granularityHours + 0.5) * 60 * 60 * 1000); // granularityHours小时后（包含该时间点）
 
       // 收集所有需要获取资金费率的交易对
       const allSymbols = new Set<string>();
-      
+
       // 添加rankings中的交易对
       result.rankings.forEach(item => {
         allSymbols.add(item.symbol);
       });
-      
+
       // 添加removedSymbols中的交易对
       if (result.removedSymbols) {
         result.removedSymbols.forEach(item => {
@@ -1085,7 +1085,7 @@ export class BinanceVolumeBacktestService {
         endTime,
         limit: 1000,
       });
-      
+
       return data.map(item => ({
         fundingTime: new Date(item.fundingTime),
         fundingRate: parseFloat(item.fundingRate.toString()),
@@ -1110,12 +1110,12 @@ export class BinanceVolumeBacktestService {
     endTime: number,
   ): Promise<Map<string, FundingRateHistoryItem[]>> {
     const fundingRateMap = new Map<string, FundingRateHistoryItem[]>();
-    
+
     // 由于资金费率API有严格的频率限制(500/5min/IP)，我们使用更保守的方式
     // 采用分批处理，每批之间有延迟
     const batchSize = this.CONCURRENCY_CONFIG.FUNDING_RATE.batchSize;
     const batches = [];
-    
+
     for (let i = 0; i < symbols.length; i += batchSize) {
       batches.push(symbols.slice(i, i + batchSize));
     }
@@ -1124,7 +1124,7 @@ export class BinanceVolumeBacktestService {
 
     for (let i = 0; i < batches.length; i++) {
       const batch = batches[i];
-      
+
       // 批次间延迟，避免触发API限制
       if (i > 0) {
         await this.delay(2000); // 2秒延迟
