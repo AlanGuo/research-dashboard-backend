@@ -17,6 +17,13 @@ export class VolumeBacktestParamsDto {
   endTime: string; // ISO 8601 格式时间
 
   @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(24)
+  @Transform(({ value }) => parseInt(value))
+  granularityHours?: number = 8; // 回测粒度（小时），默认8小时
+
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
   symbols?: string[]; // 指定交易对，为空则获取所有活跃交易对
@@ -44,13 +51,6 @@ export class VolumeBacktestParamsDto {
   @Max(730)
   @Transform(({ value }) => parseInt(value))
   minHistoryDays?: number = 365; // 最少历史数据天数，默认365天（1年）
-
-  @IsOptional()
-  @IsNumber()
-  @Min(1)
-  @Max(24)
-  @Transform(({ value }) => parseInt(value))
-  granularityHours: number = 8; // 回测粒度（小时），默认8小时
 }
 
 export class VolumeBacktestQueryDto {
@@ -61,13 +61,6 @@ export class VolumeBacktestQueryDto {
   @IsOptional()
   @IsDateString()
   endTime?: string; // 自定义结束时间 (ISO 8601 格式)
-
-  @IsOptional()
-  @IsNumber()
-  @Min(1)
-  @Max(24)
-  @Transform(({ value }) => parseInt(value))
-  granularityHours?: number = 8; // 回测粒度（小时），用于显示
 }
 
 export interface VolumeBacktestResponse {

@@ -1103,7 +1103,7 @@ export class BinanceVolumeBacktestService {
 
       // 确保 data 是数组
       if (!Array.isArray(data)) {
-        this.logger.warn(`⚠️ ${symbol} 资金费率历史返回非数组数据:`, data);
+        this.logger.error(`⚠️ ${symbol} 资金费率历史返回非数组数据:`, data);
         return [];
       }
 
@@ -1696,7 +1696,7 @@ export class BinanceVolumeBacktestService {
     endTime: Date,
     params: VolumeBacktestParamsDto,
   ): Promise<void> {
-    const granularityMs = (params.granularityHours || 8) * 60 * 60 * 1000;
+    const granularityMs = (params.granularityHours || 8) * 60 * 60 * 1000; // 添加默认值防护
     const currentTime = new Date(startTime.getTime());
     let processedCount = 0;
     const totalPeriods = Math.ceil(
@@ -1776,7 +1776,6 @@ export class BinanceVolumeBacktestService {
     params: VolumeBacktestParamsDto,
   ): Promise<void> {
     const periodStart = Date.now();
-
     // 显示当前计算的交易对信息
     const symbolsInfo =
       symbols.length <= 15

@@ -33,13 +33,12 @@ export class BinanceVolumeBacktestController {
   ): Promise<VolumeBacktestResponse> {
     try {
       this.logger.log(`收到回测请求: ${JSON.stringify(params)}`);
-      this.logger.log(`📅 回测将使用每周一重新计算的交易对列表`);
 
       // 验证时间范围
       const startTime = new Date(params.startTime);
       const endTime = new Date(params.endTime);
+      params.granularityHours = params.granularityHours || 8; // 默认8小时粒度
       const timeDiff = endTime.getTime() - startTime.getTime();
-      const maxRecommendedDuration = 7 * 24 * 60 * 60 * 1000; // 推荐最大7天
 
       if (timeDiff <= 0) {
         throw new HttpException(
@@ -47,20 +46,8 @@ export class BinanceVolumeBacktestController {
           HttpStatus.BAD_REQUEST,
         );
       }
-
-      // 如果超过推荐时间，添加警告日志
-      if (timeDiff > maxRecommendedDuration) {
-        const durationDays = Math.ceil(timeDiff / (24 * 60 * 60 * 1000));
-        const weekCount = Math.ceil(durationDays / 7);
-        this.logger.warn(
-          `⚠️ 回测时间范围较长 (${durationDays} 天, 跨越 ${weekCount} 周)，可能需要较长处理时间和更多API调用`,
-        );
-        this.logger.warn(
-          `   建议分批执行或使用更大的granularityHours来减少计算量`,
-        );
-        this.logger.warn(`   系统将为每周单独计算符合条件的交易对列表`);
-      }
-
+      
+      this.logger.log(`使用回测参数: ${JSON.stringify(params)}`);
       const result =
         await this.volumeBacktestService.executeVolumeBacktest(params);
       return result;
@@ -144,19 +131,6 @@ export class BinanceVolumeBacktestController {
         error.status || HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
-  }
-
-  /**
-   * 获取回测任务状态
-   * GET /api/binance/volume-backtest/status
-   */
-  @Get("status")
-  async getBacktestStatus() {
-    // TODO: 实现异步任务状态查询
-    return {
-      success: true,
-      message: "回测功能当前为同步执行模式",
-    };
   }
 
   /**
