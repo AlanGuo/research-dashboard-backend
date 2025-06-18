@@ -278,7 +278,7 @@ export class BinanceService {
         throw new Error("期货交易所信息格式异常");
       }
 
-      this.logger.log(
+      this.logger.debug(
         `📊 获取到 ${futuresInfo.symbols.length} 个期货交易对信息`,
       );
 
@@ -287,15 +287,11 @@ export class BinanceService {
         return s.status === "TRADING" && s.contractType === "PERPETUAL";
       });
 
-      this.logger.log(`🔍 其中永续合约数量: ${perpetualContracts.length}`);
+      this.logger.debug(`🔍 其中永续合约数量: ${perpetualContracts.length}`);
 
       const futuresSymbols = new Set<string>(
         perpetualContracts.map((s: any) => s.symbol as string),
       );
-
-      // 记录一些示例永续合约
-      const sampleFutures = Array.from(futuresSymbols).slice(0, 10);
-      this.logger.debug(`永续合约示例: ${sampleFutures.join(", ")}`);
 
       const result: { [symbol: string]: boolean } = {};
       const withFutures: string[] = [];
@@ -328,7 +324,6 @@ export class BinanceService {
 
       if (mappedFutures.length > 0) {
         this.logger.log(`   映射的合约: ${mappedFutures.length} 个`);
-        this.logger.debug(`   映射示例: ${mappedFutures.slice(0, 3).join(", ")}`);
       }
 
       if (withFutures.length > 0) {

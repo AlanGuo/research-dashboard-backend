@@ -597,6 +597,17 @@ export class BinanceVolumeBacktestService {
       }
 
       const symbolsArray = Array.from(allSymbols);
+      
+      // 双重检查：验证所有symbol是否真的有期货合约
+      this.logger.debug(`🔍 对 ${symbolsArray.length} 个ranking交易对进行期货合约双重检查...`);
+      const futuresAvailability = await this.binanceService.checkFuturesAvailability(symbolsArray);
+      const symbolsWithoutFutures = symbolsArray.filter(symbol => !futuresAvailability[symbol]);
+      
+      if (symbolsWithoutFutures.length > 0) {
+        this.logger.error(`🚨 发现 ${symbolsWithoutFutures.length} 个交易对在rankings中但没有期货合约！这是严重的过滤逻辑问题！`);
+        this.logger.error(`🚨 问题交易对: ${symbolsWithoutFutures.join(', ')}`);
+        this.logger.error(`🚨 建议清除相关缓存并重新运行`);
+      }
       this.logger.debug(
         `📊 获取 ${symbolsArray.length} 个交易对的资金费率历史: ${result.timestamp.toISOString()}`,
       );
@@ -815,16 +826,29 @@ export class BinanceVolumeBacktestService {
           `🔍 ${currentTime.toISOString()}: 通过实时计算发现 ${removedSymbolNames.length} 个移除的交易对`,
         );
 
+        // 对移除的交易对进行期货合约过滤
+        this.logger.debug(`🔍 对 ${removedSymbolNames.length} 个removedSymbols进行期货合约检查...`);
+        const futuresAvailability = await this.binanceService.checkFuturesAvailability(removedSymbolNames);
+        const filteredRemovedSymbols = removedSymbolNames.filter(symbol => futuresAvailability[symbol]);
+        
+        if (filteredRemovedSymbols.length < removedSymbolNames.length) {
+          const filteredOut = removedSymbolNames.filter(symbol => !futuresAvailability[symbol]);
+          this.logger.debug(`🚫 ${filteredOut.length} 个removedSymbols因无期货合约被过滤: ${filteredOut.join(', ')}`);
+        }
+
+        if (filteredRemovedSymbols.length === 0) {
+          return [];
+        }
+
         // 获取这些移除交易对的当前时间点数据
         const removedSymbolsData = await this.getRemovedSymbolsData(
-          removedSymbolNames,
+          filteredRemovedSymbols,
           currentTime,
         );
 
         return removedSymbolsData;
       }
 
-      // 找出从上一期排名中移除的交易对
       const previousSymbols = new Set(previousResult.rankings.map(r => r.symbol));
       const currentSymbols = new Set(currentRankings.map(r => r.symbol));
       const removedSymbolNames = Array.from(previousSymbols).filter(
@@ -874,14 +898,14 @@ export class BinanceVolumeBacktestService {
         return [];
       }
 
-      const symbols = symbolFilter.valid;
-      this.logger.debug(`📊 使用 ${symbols.length} 个交易对计算上一期排名`);
+      const validSymbols = symbolFilter.valid;
+      this.logger.debug(`📊 使用 ${validSymbols.length} 个交易对计算上一期排名`);
 
       // 创建临时的滑动窗口
       const volumeWindows = new Map<string, VolumeWindow>();
 
       // 初始化每个交易对的窗口
-      for (const symbol of symbols) {
+      for (const symbol of validSymbols) {
         volumeWindows.set(symbol, {
           symbol,
           data: [],
@@ -1075,7 +1099,7 @@ export class BinanceVolumeBacktestService {
       // 获取对应的期货交易对
       const futuresSymbol = await this.binanceService.mapToFuturesSymbol(symbol);
       if (!futuresSymbol) {
-        this.logger.debug(`📊 ${symbol} 没有对应的期货合约，跳过资金费率获取`);
+        this.logger.warn(`⚠️ ${symbol} 没有对应的期货合约，但却在rankings中出现了！这可能是缓存问题或过滤逻辑问题`);
         return [];
       }
 
