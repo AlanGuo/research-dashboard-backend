@@ -50,7 +50,7 @@ export class VolumeBacktestParamsDto {
   @Min(1)
   @Max(24)
   @Transform(({ value }) => parseInt(value))
-  granularityHours?: number = 8; // 回测粒度（小时），默认8小时
+  granularityHours: number = 8; // 回测粒度（小时），默认8小时
 }
 
 export class VolumeBacktestQueryDto {

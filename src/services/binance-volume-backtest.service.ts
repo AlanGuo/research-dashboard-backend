@@ -536,7 +536,7 @@ export class BinanceVolumeBacktestService {
    */
   private async saveSingleBacktestResult(
     result: VolumeBacktest,
-    granularityHours?: number,
+    granularityHours: number,
   ): Promise<void> {
     try {
       // 在保存前添加资金费率历史数据
@@ -580,6 +580,12 @@ export class BinanceVolumeBacktestService {
       const currentTime = result.timestamp.getTime();
       const startTime = currentTime + (10 * 60 * 1000); // 当前时间后10分钟后开始（不包含当前时间点）
       const endTime = currentTime + (granularityHours * 60 * 60 * 1000); // granularityHours小时后（包含该时间点）
+
+      // 验证时间计算结果
+      if (isNaN(startTime) || isNaN(endTime)) {
+        this.logger.error(`❌ 时间计算错误: currentTime=${currentTime}, granularityHours=${granularityHours}`);
+        return result; // 返回原始结果，不添加资金费率
+      }
 
       // 只收集rankings中的交易对来获取资金费率
       const symbolsArray = result.rankings.map(item => item.symbol);
@@ -1070,6 +1076,17 @@ export class BinanceVolumeBacktestService {
     endTime: number,
   ): Promise<FundingRateHistoryItem[]> {
     try {
+      // 验证时间参数
+      if (isNaN(startTime) || isNaN(endTime)) {
+        this.logger.error(`❌ 无效的时间参数: ${symbol}, startTime=${startTime}, endTime=${endTime}`);
+        return [];
+      }
+
+      if (startTime >= endTime) {
+        this.logger.warn(`⚠️ 开始时间不能大于等于结束时间: ${symbol}, startTime=${startTime}, endTime=${endTime}`);
+        return [];
+      }
+
       // 获取对应的期货交易对
       const futuresSymbol = await this.binanceService.mapToFuturesSymbol(symbol);
       if (!futuresSymbol) {
@@ -1114,6 +1131,17 @@ export class BinanceVolumeBacktestService {
     endTime: number,
   ): Promise<Map<string, FundingRateHistoryItem[]>> {
     const fundingRateMap = new Map<string, FundingRateHistoryItem[]>();
+
+    // 验证时间参数
+    if (isNaN(startTime) || isNaN(endTime)) {
+      this.logger.error(`❌ 批量获取资金费率时无效的时间参数: startTime=${startTime}, endTime=${endTime}`);
+      return fundingRateMap;
+    }
+
+    if (startTime >= endTime) {
+      this.logger.warn(`⚠️ 批量获取资金费率时开始时间不能大于等于结束时间: startTime=${startTime}, endTime=${endTime}`);
+      return fundingRateMap;
+    }
 
     // 由于资金费率API有严格的频率限制(500/5min/IP)，我们使用更保守的方式
     // 采用分批处理，每批之间有延迟
