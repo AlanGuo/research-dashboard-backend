@@ -1074,8 +1074,15 @@ export class BinanceVolumeBacktestService {
     endTime: number,
   ): Promise<FundingRateHistoryItem[]> {
     try {
+      // 获取对应的期货交易对
+      const futuresSymbol = await this.binanceService.mapToFuturesSymbol(symbol);
+      if (!futuresSymbol) {
+        this.logger.debug(`📊 ${symbol} 没有对应的期货合约，跳过资金费率获取`);
+        return [];
+      }
+
       const data: FundingRateData[] = await this.binanceService.getFundingRateHistory({
-        symbol,
+        symbol: futuresSymbol,
         startTime,
         endTime,
         limit: 1000,

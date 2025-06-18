@@ -289,8 +289,8 @@ export class BinanceService {
 
       this.logger.log(`🔍 其中永续合约数量: ${perpetualContracts.length}`);
 
-      const futuresSymbols = new Set(
-        perpetualContracts.map((s: any) => s.symbol),
+      const futuresSymbols = new Set<string>(
+        perpetualContracts.map((s: any) => s.symbol as string),
       );
 
       // 记录一些示例永续合约
@@ -300,14 +300,19 @@ export class BinanceService {
       const result: { [symbol: string]: boolean } = {};
       const withFutures: string[] = [];
       const withoutFutures: string[] = [];
+      const mappedFutures: string[] = [];
 
       for (const symbol of symbols) {
         // 检查是否有对应的永续合约
-        const hasFutures = futuresSymbols.has(symbol);
+        const futuresSymbol = this.mapSpotToFutures(symbol, futuresSymbols);
+        const hasFutures = futuresSymbol !== null;
         result[symbol] = hasFutures;
 
         if (hasFutures) {
           withFutures.push(symbol);
+          if (futuresSymbol !== symbol) {
+            mappedFutures.push(`${symbol} -> ${futuresSymbol}`);
+          }
         } else {
           withoutFutures.push(symbol);
         }
@@ -320,6 +325,11 @@ export class BinanceService {
       this.logger.log(
         `   无永续合约: ${withoutFutures.length}/${symbols.length}`,
       );
+
+      if (mappedFutures.length > 0) {
+        this.logger.log(`   映射的合约: ${mappedFutures.length} 个`);
+        this.logger.debug(`   映射示例: ${mappedFutures.slice(0, 3).join(", ")}`);
+      }
 
       if (withFutures.length > 0) {
         const sampleWith = withFutures.slice(0, 5);
@@ -419,6 +429,67 @@ export class BinanceService {
         sampleContracts: [],
         message: `期货API连接失败: ${error.message}`,
       };
+    }
+  }
+
+  /**
+   * 将现货交易对映射到对应的期货交易对
+   * 处理特殊情况，如 PEPEUSDT -> 1000PEPEUSDT
+   */
+  private mapSpotToFutures(spotSymbol: string, futuresSymbols: Set<string>): string | null {
+    // 1. 直接匹配（大多数情况）
+    if (futuresSymbols.has(spotSymbol)) {
+      return spotSymbol;
+    }
+
+    // 2. 特殊映射规则
+    const specialMappings: { [spot: string]: string } = {
+      'PEPEUSDT': '1000PEPEUSDT',
+      'SHIBUSDT': '1000SHIBUSDT',
+      'LUNCUSDT': '1000LUNCUSDT',
+      'XECUSDT': '1000XECUSDT',
+      'FLOKIUSDT': '1000FLOKIUSDT',
+      'RATSUSDT': '1000RATSUSDT',
+      'BONKUSDT': '1000BONKUSDT',
+      // 可以根据需要添加更多映射
+    };
+
+    const mappedSymbol = specialMappings[spotSymbol];
+    if (mappedSymbol && futuresSymbols.has(mappedSymbol)) {
+      return mappedSymbol;
+    }
+
+    // 3. 动态映射：尝试添加1000前缀
+    if (spotSymbol.endsWith('USDT')) {
+      const baseAsset = spotSymbol.replace('USDT', '');
+      const thousandPrefix = `1000${baseAsset}USDT`;
+      if (futuresSymbols.has(thousandPrefix)) {
+        return thousandPrefix;
+      }
+    }
+
+    // 4. 没有找到对应的期货合约
+    return null;
+  }
+
+  /**
+   * 将现货交易对映射到对应的期货交易对（公开方法）
+   */
+  async mapToFuturesSymbol(spotSymbol: string): Promise<string | null> {
+    try {
+      // 获取期货交易所信息
+      const futuresInfo = await this.getFuturesExchangeInfo();
+      const perpetualContracts = futuresInfo.symbols.filter((s: any) => {
+        return s.status === "TRADING" && s.contractType === "PERPETUAL";
+      });
+      const futuresSymbols = new Set<string>(
+        perpetualContracts.map((s: any) => s.symbol as string),
+      );
+      
+      return this.mapSpotToFutures(spotSymbol, futuresSymbols);
+    } catch (error) {
+      this.logger.error(`映射期货交易对失败: ${spotSymbol}`, error);
+      return null;
     }
   }
 
