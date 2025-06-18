@@ -812,23 +812,13 @@ export class BinanceVolumeBacktestService {
           `🔍 ${currentTime.toISOString()}: 通过实时计算发现 ${removedSymbolNames.length} 个移除的交易对`,
         );
 
-        // 对移除的交易对进行期货合约过滤
-        this.logger.debug(`🔍 对 ${removedSymbolNames.length} 个removedSymbols进行期货合约检查...`);
-        const futuresAvailability = await this.binanceService.checkFuturesAvailability(removedSymbolNames);
-        const filteredRemovedSymbols = removedSymbolNames.filter(symbol => futuresAvailability[symbol]);
-        
-        if (filteredRemovedSymbols.length < removedSymbolNames.length) {
-          const filteredOut = removedSymbolNames.filter(symbol => !futuresAvailability[symbol]);
-          this.logger.debug(`🚫 ${filteredOut.length} 个removedSymbols因无期货合约被过滤: ${filteredOut.join(', ')}`);
-        }
-
-        if (filteredRemovedSymbols.length === 0) {
+        if (removedSymbolNames.length === 0) {
           return [];
         }
 
         // 获取这些移除交易对的当前时间点数据
         const removedSymbolsData = await this.getRemovedSymbolsData(
-          filteredRemovedSymbols,
+          removedSymbolNames,
           currentTime,
         );
 
