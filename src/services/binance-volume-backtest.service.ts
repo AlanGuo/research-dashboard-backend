@@ -581,22 +581,8 @@ export class BinanceVolumeBacktestService {
       const startTime = currentTime + (0.5 * 60 * 60 * 1000); // 当前时间后30分钟后开始（不包含当前时间点）
       const endTime = currentTime + ((granularityHours + 0.5) * 60 * 60 * 1000); // granularityHours小时后（包含该时间点）
 
-      // 收集所有需要获取资金费率的交易对
-      const allSymbols = new Set<string>();
-
-      // 添加rankings中的交易对
-      result.rankings.forEach(item => {
-        allSymbols.add(item.symbol);
-      });
-
-      // 添加removedSymbols中的交易对
-      if (result.removedSymbols) {
-        result.removedSymbols.forEach(item => {
-          allSymbols.add(item.symbol);
-        });
-      }
-
-      const symbolsArray = Array.from(allSymbols);
+      // 只收集rankings中的交易对来获取资金费率
+      const symbolsArray = result.rankings.map(item => item.symbol);
 
       // 批量获取资金费率历史
       const fundingRateMap = await this.getFundingRateHistoryBatch(
@@ -611,12 +597,6 @@ export class BinanceVolumeBacktestService {
         fundingRateHistory: fundingRateMap.get(item.symbol) || [],
       }));
 
-      // 为removedSymbols添加资金费率历史
-      const enrichedRemovedSymbols = result.removedSymbols?.map(item => ({
-        ...item,
-        fundingRateHistory: fundingRateMap.get(item.symbol) || [],
-      })) || [];
-
       this.logger.debug(
         `✅ 资金费率历史添加完成: 成功获取 ${fundingRateMap.size}/${symbolsArray.length} 个交易对的数据`,
       );
@@ -624,7 +604,8 @@ export class BinanceVolumeBacktestService {
       return {
         ...result,
         rankings: enrichedRankings,
-        removedSymbols: enrichedRemovedSymbols,
+        // 保持removedSymbols不变，不添加资金费率历史
+        removedSymbols: result.removedSymbols,
       };
     } catch (error) {
       this.logger.error(
