@@ -1084,6 +1084,12 @@ export class BinanceVolumeBacktestService {
         limit: 1000,
       });
 
+      // 确保 data 是数组
+      if (!Array.isArray(data)) {
+        this.logger.warn(`⚠️ ${symbol} 资金费率历史返回非数组数据:`, data);
+        return [];
+      }
+
       return data.map(item => ({
         fundingTime: new Date(item.fundingTime),
         fundingRate: parseFloat(item.fundingRate.toString()),

@@ -253,10 +253,23 @@ export class BinanceService {
   }): Promise<any[]> {
     const context = `资金费率历史${params.symbol}`;
 
-    return this.callBinanceApi("/fapi/v1/fundingRate", params, {
-      context,
-      useFuturesApi: true,
-    });
+    try {
+      const result = await this.callBinanceApi("/fapi/v1/fundingRate", params, {
+        context,
+        useFuturesApi: true,
+      });
+
+      // 确保返回的是数组
+      if (!Array.isArray(result)) {
+        this.logger.warn(`⚠️ ${params.symbol} 资金费率API返回非数组数据:`, result);
+        return [];
+      }
+
+      return result;
+    } catch (error) {
+      this.logger.error(`❌ 获取资金费率历史失败: ${params.symbol}`, error);
+      return [];
+    }
   }
 
   /**
