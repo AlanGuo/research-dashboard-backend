@@ -150,9 +150,7 @@ export class BinanceVolumeBacktestService {
         totalDiscovered: allActiveSymbols.length,
         weeklyBreakdown: [],
         filterCriteria: {
-          minHistoryDays: params.minHistoryDays || 365,
-          requireFutures: params.requireFutures || false,
-          excludeStablecoins: params.excludeStablecoins ?? true,
+          minHistoryDays: params.minHistoryDays || 365
         },
       };
 
@@ -174,8 +172,8 @@ export class BinanceVolumeBacktestService {
             allActiveSymbols,
             {
               minHistoryDays: params.minHistoryDays || 365,
-              requireFutures: params.requireFutures || false,
-              excludeStablecoins: params.excludeStablecoins ?? true,
+              requireFutures: true,
+              excludeStablecoins: true,
               concurrency: this.CONCURRENCY_CONFIG.GENERAL.maxConcurrency,
               referenceTime: weekStart,
             },
@@ -1246,9 +1244,6 @@ export class BinanceVolumeBacktestService {
       quoteAsset: params.quoteAsset || "USDT",
       minVolumeThreshold: params.minVolumeThreshold || 10000,
       minHistoryDays: params.minHistoryDays || 365,
-      requireFutures: params.requireFutures || false,
-      excludeStablecoins: params.excludeStablecoins ?? true,
-      includeInactive: params.includeInactive || false,
     };
 
     const criteriaString = JSON.stringify(
@@ -1335,9 +1330,6 @@ export class BinanceVolumeBacktestService {
         quoteAsset: params.quoteAsset,
         minVolumeThreshold: params.minVolumeThreshold || 10000,
         minHistoryDays: params.minHistoryDays || 365,
-        requireFutures: params.requireFutures || false,
-        excludeStablecoins: params.excludeStablecoins ?? true,
-        includeInactive: params.includeInactive || false,
       };
 
       const statistics = {
@@ -1538,7 +1530,7 @@ export class BinanceVolumeBacktestService {
     const startTime = Date.now();
     const concurrency = params.concurrency || 5;
     const minHistoryDays = params.minHistoryDays || 365;
-    const requireFutures = params.requireFutures || false;
+    const requireFutures = params.requireFutures || true;
     const excludeStablecoins = params.excludeStablecoins ?? true;
     const referenceTime = params.referenceTime || new Date();
 

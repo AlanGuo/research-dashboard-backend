@@ -39,23 +39,11 @@ export class VolumeBacktestParamsDto {
   quoteAsset?: string = "USDT"; // 基准计价货币，默认USDT
 
   @IsOptional()
-  @Transform(({ value }) => value === "true")
-  includeInactive?: boolean = false; // 是否包含非活跃交易对
-
-  @IsOptional()
   @IsNumber()
   @Min(30)
   @Max(730)
   @Transform(({ value }) => parseInt(value))
   minHistoryDays?: number = 365; // 最少历史数据天数，默认365天（1年）
-
-  @IsOptional()
-  @Transform(({ value }) => value === "true")
-  requireFutures?: boolean = true; // 是否要求有期货合约可做空
-
-  @IsOptional()
-  @Transform(({ value }) => value === "true")
-  excludeStablecoins?: boolean = true; // 是否排除稳定币，默认排除
 
   @IsOptional()
   @IsNumber()
@@ -120,9 +108,7 @@ export interface VolumeBacktestResponse {
         sampleSymbols: string[];
       }[];
       filterCriteria: {
-        minHistoryDays: number;
-        requireFutures: boolean;
-        excludeStablecoins: boolean;
+        minHistoryDays: number
       };
       invalidReasons?: { [reason: string]: number };
     };
