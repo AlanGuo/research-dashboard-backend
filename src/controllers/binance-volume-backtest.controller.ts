@@ -14,6 +14,7 @@ import {
   VolumeBacktestQueryDto,
   VolumeBacktestResponse,
   SupplementRemovedSymbolsDto,
+  SupplementFuturesPricesDto,
 } from "../dto/volume-backtest-params.dto";
 
 @Controller("/v1/binance/volume-backtest")
@@ -161,44 +162,6 @@ export class BinanceVolumeBacktestController {
   }
 
   /**
-   * 补充现有回测数据的removedSymbols字段
-   * POST /api/binance/volume-backtest/supplement-removed-symbols
-   */
-  @Post("supplement-removed-symbols")
-  async supplementRemovedSymbols(
-    @Body() params: SupplementRemovedSymbolsDto
-  ) {
-    try {
-      this.logger.log(`收到补充removedSymbols请求: ${JSON.stringify(params)}`);
-
-      const startTime = new Date(params.startTime);
-      const endTime = new Date(params.endTime);
-
-      // 验证时间范围
-      if (startTime >= endTime) {
-        throw new HttpException(
-          "结束时间必须大于开始时间",
-          HttpStatus.BAD_REQUEST,
-        );
-      }
-
-      const result = await this.volumeBacktestService.supplementRemovedSymbols(
-        startTime,
-        endTime,
-        params.granularityHours || 8,
-      );
-
-      return result;
-    } catch (error) {
-      this.logger.error("补充removedSymbols失败:", error);
-      throw new HttpException(
-        error.message || "补充removedSymbols失败",
-        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
-  }
-
-  /**
    * 清理过期缓存
    * POST /v1/binance/volume-backtest/cache-cleanup
    */
@@ -214,6 +177,42 @@ export class BinanceVolumeBacktestController {
       this.logger.error("清理缓存失败:", error);
       throw new HttpException(
         error.message || "清理缓存失败",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * 测试期货API连通性
+   * GET /v1/binance/volume-backtest/test-futures-api
+   */
+  @Get("test-futures-api")
+  async testFuturesApi() {
+    try {
+      const result = await this.volumeBacktestService.testFuturesApi();
+      return result;
+    } catch (error) {
+      this.logger.error("测试期货API失败:", error);
+      throw new HttpException(
+        error.message || "测试期货API失败",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * 测试期货API功能
+   * GET /v1/binance/volume-backtest/test-futures-features
+   */
+  @Get("test-futures-features")
+  async testFuturesApiFeatures(): Promise<any> {
+    try {
+      const result = await this.volumeBacktestService.testFuturesApiFeatures();
+      return result;
+    } catch (error) {
+      this.logger.error("测试期货API功能失败:", error);
+      throw new HttpException(
+        error.message || "测试期货API功能失败",
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }

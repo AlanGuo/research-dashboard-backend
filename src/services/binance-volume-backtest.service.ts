@@ -408,7 +408,7 @@ export class BinanceVolumeBacktestService {
         const latestKline = window.data[window.data.length - 1];
         const earliestKline = window.data[0];
 
-        const currentPrice = parseFloat(latestKline.close);
+        const currentPrice = parseFloat(latestKline.open);
         const price24hAgo = parseFloat(earliestKline.open);
 
         // 计算24小时涨跌幅
@@ -530,13 +530,13 @@ export class BinanceVolumeBacktestService {
       await this.volumeBacktestModel.findOneAndUpdate(
         { timestamp: result.timestamp }, // 查找条件
         result, // 更新数据
-        { 
+        {
           upsert: true, // 如果不存在则创建
           new: true, // 返回更新后的文档
           overwrite: true // 完全覆盖现有文档
         }
       );
-      
+
       this.logger.debug(
         `💾 数据已保存/更新: ${result.timestamp.toISOString()}`,
       );
@@ -573,157 +573,6 @@ export class BinanceVolumeBacktestService {
   }
 
   /**
-   * 补充现有回测数据的removedSymbols字段
-   * 用于为已存在的回测结果添加从上一期排名中移除的交易对信息
-   */
-  async supplementRemovedSymbols(
-    startTime: Date,
-    endTime: Date,
-    granularityHours: number = 8,
-  ): Promise<{
-    success: boolean;
-    processedCount: number;
-    skippedCount: number;
-    errorCount: number;
-    totalTime: number;
-  }> {
-    const startExecution = Date.now();
-    let processedCount = 0;
-    let skippedCount = 0;
-    let errorCount = 0;
-
-    this.logger.log(
-      `🔄 开始补充removedSymbols数据: ${startTime.toISOString()} - ${endTime.toISOString()}`,
-    );
-
-    try {
-      // 获取指定时间范围内的所有回测结果，按时间排序
-      const backtestResults = await this.volumeBacktestModel
-        .find({
-          timestamp: { $gte: startTime, $lte: endTime },
-        })
-        .sort({ timestamp: 1 })
-        .exec();
-
-      if (backtestResults.length === 0) {
-        this.logger.warn('⚠️ 指定时间范围内没有找到回测数据');
-        return {
-          success: true,
-          processedCount: 0,
-          skippedCount: 0,
-          errorCount: 0,
-          totalTime: Date.now() - startExecution,
-        };
-      }
-
-      this.logger.log(`📊 找到 ${backtestResults.length} 条回测数据，开始处理...`);
-
-      // 遍历每条记录，从第二条开始处理（第一条没有"上一期"）
-      for (let i = 1; i < backtestResults.length; i++) {
-        const currentResult = backtestResults[i];
-        const previousResult = backtestResults[i - 1];
-
-        try {
-          // 检查时间间隔是否符合granularityHours
-          const timeDiff = (currentResult.timestamp.getTime() - previousResult.timestamp.getTime()) / (1000 * 60 * 60);
-          if (Math.abs(timeDiff - granularityHours) > 1) {
-            this.logger.debug(
-              `⏭️ 跳过 ${currentResult.timestamp.toISOString()}: 时间间隔不匹配 (${timeDiff.toFixed(1)}h != ${granularityHours}h)`,
-            );
-            skippedCount++;
-            continue;
-          }
-
-          // 检查是否已经有removedSymbols数据
-          if (currentResult.removedSymbols && currentResult.removedSymbols.length > 0) {
-            this.logger.debug(
-              `⏭️ 跳过 ${currentResult.timestamp.toISOString()}: 已有removedSymbols数据`,
-            );
-            skippedCount++;
-            continue;
-          }
-
-          // 找出从上一期排名中移除的交易对
-          const previousSymbols = new Set(previousResult.rankings.map(r => r.symbol));
-          const currentSymbols = new Set(currentResult.rankings.map(r => r.symbol));
-          const removedSymbolNames = Array.from(previousSymbols).filter(
-            symbol => !currentSymbols.has(symbol)
-          );
-
-          if (removedSymbolNames.length === 0) {
-            this.logger.debug(
-              `✅ ${currentResult.timestamp.toISOString()}: 无移除的交易对`,
-            );
-            skippedCount++;
-            continue;
-          }
-
-          this.logger.log(
-            `🔍 ${currentResult.timestamp.toISOString()}: 找到 ${removedSymbolNames.length} 个移除的交易对: ${removedSymbolNames.slice(0, 3).join(', ')}${removedSymbolNames.length > 3 ? '...' : ''}`,
-          );
-
-          // 为这些移除的交易对获取当前时间点的数据
-          const removedSymbolsData = await this.getRemovedSymbolsData(
-            removedSymbolNames,
-            currentResult.timestamp,
-          );
-
-          if (removedSymbolsData.length > 0) {
-            // 更新数据库记录
-            const updateResult = await this.volumeBacktestModel.updateOne(
-              { _id: currentResult._id },
-              { $set: { removedSymbols: removedSymbolsData } }
-            );
-
-            if (updateResult.modifiedCount > 0) {
-              this.logger.log(
-                `✅ ${currentResult.timestamp.toISOString()}: 成功添加 ${removedSymbolsData.length} 个removedSymbols`,
-              );
-              processedCount++;
-            } else {
-              this.logger.warn(
-                `⚠️ ${currentResult.timestamp.toISOString()}: 数据库更新失败`,
-              );
-              errorCount++;
-            }
-          } else {
-            this.logger.warn(
-              `⚠️ ${currentResult.timestamp.toISOString()}: 无法获取移除交易对的数据`,
-            );
-            skippedCount++;
-          }
-
-          // 添加延迟避免API限制
-          await this.delay(this.configService.binanceRequestDelay);
-
-        } catch (error) {
-          this.logger.error(
-            `❌ 处理 ${currentResult.timestamp.toISOString()} 时出错: ${error.message}`,
-          );
-          errorCount++;
-        }
-      }
-
-      const totalTime = Date.now() - startExecution;
-      this.logger.log(
-        `🎉 补充removedSymbols完成! 处理: ${processedCount}, 跳过: ${skippedCount}, 错误: ${errorCount}, 耗时: ${(totalTime / 1000).toFixed(1)}s`,
-      );
-
-      return {
-        success: true,
-        processedCount,
-        skippedCount,
-        errorCount,
-        totalTime,
-      };
-
-    } catch (error) {
-      this.logger.error('❌ 补充removedSymbols失败:', error);
-      throw error;
-    }
-  }
-
-  /**
    * 获取移除交易对在指定时间点的数据
    */
   private async getRemovedSymbolsData(
@@ -736,7 +585,7 @@ export class BinanceVolumeBacktestService {
     const batchSize = 10;
     for (let i = 0; i < symbols.length; i += batchSize) {
       const batch = symbols.slice(i, i + batchSize);
-      
+
       const batchResults = await Promise.allSettled(
         batch.map(async (symbol) => {
           try {
@@ -759,8 +608,8 @@ export class BinanceVolumeBacktestService {
               // 计算价格和波动率数据
               const latestKline = klineData[klineData.length - 1];
               const earliestKline = klineData[0];
-              
-              const priceAtTime = parseFloat(latestKline.close);
+
+              const priceAtTime = parseFloat(latestKline.open);
               const price24hAgo = parseFloat(earliestKline.open);
               const priceChange24h = ((priceAtTime - price24hAgo) / price24hAgo) * 100;
 
@@ -812,6 +661,14 @@ export class BinanceVolumeBacktestService {
       }
     }
 
+    // 添加期货价格到移除的交易对
+    try {
+      this.logger.debug(`🔍 为 ${removedSymbolsData.length} 个移除的交易对添加期货价格...`);
+      await this.addFuturesPricesToRankings(removedSymbolsData, timestamp);
+    } catch (error) {
+      this.logger.warn(`⚠️ 为移除交易对添加期货价格失败: ${error.message}，继续使用现货价格`);
+    }
+
     // 按价格跌幅排序（与主排行榜保持一致）
     removedSymbolsData.sort((a, b) => a.priceChange24h - b.priceChange24h);
 
@@ -836,7 +693,7 @@ export class BinanceVolumeBacktestService {
       // 计算上一期时间点
       const granularityHours = params.granularityHours || 8;
       const previousTime = new Date(currentTime.getTime() - granularityHours * 60 * 60 * 1000);
-      
+
       // 查询上一期的排名数据
       const previousResult = await this.volumeBacktestModel
         .findOne({ timestamp: previousTime })
@@ -845,10 +702,10 @@ export class BinanceVolumeBacktestService {
       // 如果没有上一期数据，需要实时计算上一期的排名
       if (!previousResult || !previousResult.rankings) {
         this.logger.debug(`📊 ${currentTime.toISOString()}: 无上一期数据 (${previousTime.toISOString()})，实时计算上一期排名`);
-        
+
         // 实时计算上一期排名来获取removedSymbols
         const previousRankings = await this.calculatePreviousPeriodRanking(previousTime, params);
-        
+
         if (previousRankings.length === 0) {
           return [];
         }
@@ -917,11 +774,11 @@ export class BinanceVolumeBacktestService {
       // 找到上一期时间对应的周一时间点
       const weekStart = this.findMondayForTime(previousTime);
       const weekKey = weekStart.toISOString().slice(0, 10);
-      
+
       // 获取该周的筛选条件哈希（使用传入的参数）
       const weeklyFilterHash = this.generateFilterHash(weekStart, params);
       const symbolFilter = await this.getFilterFromCache(weeklyFilterHash);
-      
+
       if (!symbolFilter || symbolFilter.valid.length === 0) {
         this.logger.warn(`⚠️ 无法获取 ${weekKey} 周的交易对列表`);
         return [];
@@ -951,11 +808,19 @@ export class BinanceVolumeBacktestService {
       });
 
       // 计算排行榜
-      const rankings = this.calculateRankings(
+      let rankings = this.calculateRankings(
         volumeWindows,
         params.limit || 50,
         params.minVolumeThreshold || 0,
       );
+
+      // 添加期货价格到上一期排名
+      try {
+        this.logger.debug(`🔍 为上一期 ${rankings.length} 个交易对添加期货价格...`);
+        rankings = await this.addFuturesPricesToRankings(rankings, previousTime);
+      } catch (error) {
+        this.logger.warn(`⚠️ 为上一期排名添加期货价格失败: ${error.message}，继续使用现货价格`);
+      }
 
       this.logger.debug(
         `✅ 成功计算上一期排名: ${rankings.length} 个交易对`,
@@ -967,6 +832,133 @@ export class BinanceVolumeBacktestService {
         `❌ 计算上一期排名失败 (${previousTime.toISOString()}): ${error.message}`,
       );
       return [];
+    }
+  }
+
+  /**
+   * 获取指定交易对在特定时间点的期货价格
+   */
+  private async getFuturesPricesForSymbols(
+    symbols: string[],
+    timestamp: Date,
+    futuresSymbols: Set<string>
+  ): Promise<{ [symbol: string]: number }> {
+    const result: { [symbol: string]: number } = {};
+
+    // 过滤出有期货合约的交易对
+    const availableSymbols = symbols.filter((symbol) => futuresSymbols.has(symbol));
+
+    if (availableSymbols.length === 0) {
+      this.logger.debug(`⚠️ 没有找到有期货合约的交易对 (总共 ${symbols.length} 个)`);
+      return result;
+    }
+
+    this.logger.debug(`🔍 获取 ${availableSymbols.length}/${symbols.length} 个交易对的期货价格 (时间: ${timestamp.toISOString()})`);
+
+    // 分批获取期货价格，避免API限制
+    const batchSize = 15;
+    for (let i = 0; i < availableSymbols.length; i += batchSize) {
+      const batch = availableSymbols.slice(i, i + batchSize);
+
+      const batchResults = await Promise.allSettled(
+        batch.map(async (symbol) => {
+          try {
+            // 获取该时间点的期货K线数据，使用更宽的时间范围
+            const futuresKlines = await this.binanceService.getFuturesKlines({
+              symbol,
+              interval: '1h',
+              startTime: timestamp.getTime() - 30 * 60 * 1000, // -30分钟
+              endTime: timestamp.getTime() + 90 * 60 * 1000, // +90分钟
+              limit: 3,
+            });
+
+            if (futuresKlines.length > 0) {
+              // 找到最接近目标时间的K线
+              let closestKline = futuresKlines[0];
+              let minTimeDiff = Math.abs(futuresKlines[0].openTime - timestamp.getTime());
+
+              for (const kline of futuresKlines) {
+                const timeDiff = Math.abs(kline.openTime - timestamp.getTime());
+                if (timeDiff < minTimeDiff) {
+                  minTimeDiff = timeDiff;
+                  closestKline = kline;
+                }
+              }
+
+              const price = parseFloat(closestKline.open);
+              // this.logger.debug(`💰 ${symbol}: 期货价格 $${price.toFixed(2)} (时间差: ${Math.round(minTimeDiff / 60000)}分钟)`);
+              return { symbol, price };
+            } else {
+              this.logger.warn(`⚠️ ${symbol} 在 ${timestamp.toISOString()} 无期货K线数据`);
+              return null;
+            }
+          } catch (error) {
+            this.logger.warn(`⚠️ 获取 ${symbol} 期货价格失败: ${error.message}`);
+            return null;
+          }
+        })
+      );
+
+      // 处理批次结果
+      batchResults.forEach((promiseResult) => {
+        if (promiseResult.status === 'fulfilled' && promiseResult.value) {
+          const { symbol, price } = promiseResult.value;
+          result[symbol] = price;
+        }
+      });
+
+      // 批次间延迟，避免API限流
+      if (i + batchSize < availableSymbols.length) {
+        await this.delay(300);
+      }
+    }
+
+    this.logger.debug(`✅ 成功获取 ${Object.keys(result).length} 个交易对的期货价格`);
+    return result;
+  }
+
+  /**
+   * 为排名结果添加期货价格信息
+   */
+  private async addFuturesPricesToRankings(
+    rankings: HourlyRankingItem[],
+    timestamp: Date,
+    futuresSymbols?: Set<string>
+  ): Promise<HourlyRankingItem[]> {
+    if (rankings.length === 0) {
+      return rankings;
+    }
+
+    try {
+      // 如果没有提供期货合约列表，则获取
+      if (!futuresSymbols) {
+        const futuresInfo = await this.binanceService.getFuturesExchangeInfo();
+        futuresSymbols = new Set<string>(
+          futuresInfo.symbols
+            .filter((s: any) => s.status === "TRADING" && s.contractType === "PERPETUAL")
+            .map((s: any) => s.symbol)
+        );
+      }
+
+      // 获取期货价格
+      const futuresPrices = await this.getFuturesPricesForSymbols(
+        rankings.map((r) => r.symbol),
+        timestamp,
+        futuresSymbols
+      );
+
+      // 为每个排名项添加期货价格
+      rankings.forEach((ranking) => {
+        ranking.futurePriceAtTime = futuresPrices[ranking.symbol] || undefined;
+      });
+
+      const withFuturesCount = rankings.filter(r => r.futurePriceAtTime !== undefined).length;
+      this.logger.debug(`✅ 成功为 ${withFuturesCount}/${rankings.length} 个交易对添加期货价格`);
+
+      return rankings;
+    } catch (error) {
+      this.logger.warn(`⚠️ 添加期货价格失败: ${error.message}，继续使用现货价格`);
+      return rankings;
     }
   }
 
@@ -987,8 +979,70 @@ export class BinanceVolumeBacktestService {
   /**
    * 测试期货API连通性
    */
-  async testFuturesApi() {
-    return this.binanceService.testFuturesConnectivity();
+  async testFuturesApi(): Promise<any> {
+    return await this.binanceService.testFuturesConnectivity();
+  }
+
+  /**
+   * 测试期货API功能
+   */
+  async testFuturesApiFeatures(): Promise<any> {
+    try {
+      this.logger.log("🧪 开始测试期货API功能...");
+
+      // 1. 测试获取期货交易所信息
+      const futuresInfo = await this.binanceService.getFuturesExchangeInfo();
+      const perpetualContracts = futuresInfo.symbols
+        .filter((s: any) => s.status === "TRADING" && s.contractType === "PERPETUAL")
+        .map((s: any) => s.symbol);
+
+      this.logger.log(`✅ 期货交易所信息: ${perpetualContracts.length} 个永续合约`);
+
+      // 2. 测试获取期货K线数据 (使用BTCUSDT作为示例)
+      const testSymbol = "BTCUSDT";
+      const now = new Date();
+      const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+
+      const futuresKlines = await this.binanceService.getFuturesKlines({
+        symbol: testSymbol,
+        interval: '1h',
+        startTime: oneHourAgo.getTime(),
+        endTime: now.getTime(),
+        limit: 1,
+      });
+
+      this.logger.log(`✅ 期货K线数据: ${testSymbol} 价格 ${futuresKlines[0]?.close}`);
+
+      // 3. 测试批量获取期货价格
+      const testSymbols = perpetualContracts.slice(0, 5);
+      const futuresSymbolsSet = new Set<string>(perpetualContracts);
+      const futuresPrices = await this.getFuturesPricesForSymbols(
+        testSymbols,
+        now,
+        futuresSymbolsSet
+      );
+
+      this.logger.log(`✅ 批量期货价格: 获取了 ${Object.keys(futuresPrices).length} 个价格`);
+
+      return {
+        success: true,
+        message: "期货API功能测试完成",
+        data: {
+          perpetualContractsCount: perpetualContracts.length,
+          sampleContracts: perpetualContracts.slice(0, 10),
+          testKlineData: futuresKlines[0],
+          testPrices: futuresPrices,
+        }
+      };
+
+    } catch (error) {
+      this.logger.error("❌ 期货API功能测试失败:", error);
+      return {
+        success: false,
+        message: `期货API功能测试失败: ${error.message}`,
+        error: error.message,
+      };
+    }
   }
 
   /**
@@ -1636,8 +1690,8 @@ export class BinanceVolumeBacktestService {
             }
 
             if (currentKline && btc24hAgoKline) {
-              btcPrice = parseFloat(currentKline.close);
-              const btcPrice24hAgo = parseFloat(btc24hAgoKline.close);
+              btcPrice = parseFloat(currentKline.open);
+              const btcPrice24hAgo = parseFloat(btc24hAgoKline.open);
 
               if (btcPrice24hAgo > 0) {
                 btcPriceChange24h = ((btcPrice - btcPrice24hAgo) / btcPrice24hAgo) * 100;
@@ -1670,11 +1724,19 @@ export class BinanceVolumeBacktestService {
       }
 
       // 计算合并排行榜（按涨跌幅排序，跌幅最大的在前）
-      const rankings = this.calculateRankings(
+      let rankings = this.calculateRankings(
         volumeWindows,
         params.limit || 50,
         params.minVolumeThreshold || 0,
       );
+
+      // 添加期货价格到排名
+      try {
+        this.logger.debug(`🔍 为 ${rankings.length} 个交易对添加期货价格...`);
+        rankings = await this.addFuturesPricesToRankings(rankings, currentTime);
+      } catch (error) {
+        this.logger.warn(`⚠️ 添加期货价格失败: ${error.message}，继续使用现货价格`);
+      }
 
       // 计算市场统计
       const marketStats = this.calculateMarketStats(rankings);

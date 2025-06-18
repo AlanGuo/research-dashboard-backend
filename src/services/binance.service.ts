@@ -192,6 +192,43 @@ export class BinanceService {
   }
 
   /**
+   * 获取期货K线数据
+   */
+  async getFuturesKlines(params: {
+    symbol: string;
+    interval: string;
+    startTime?: number;
+    endTime?: number;
+    limit?: number;
+  }): Promise<KlineData[]> {
+    const startTimeStr = params.startTime
+      ? new Date(params.startTime).toISOString().slice(0, 16)
+      : "";
+    const endTimeStr = params.endTime
+      ? new Date(params.endTime).toISOString().slice(0, 16)
+      : "";
+    const context = `期货${params.symbol} ${startTimeStr}-${endTimeStr}`;
+
+    const data = await this.callBinanceApi("/fapi/v1/klines", params, {
+      context,
+      useFuturesApi: true,
+    });
+    return data.map((kline) => ({
+      openTime: kline[0],
+      open: kline[1],
+      high: kline[2],
+      low: kline[3],
+      close: kline[4],
+      volume: kline[5],
+      closeTime: kline[6],
+      quoteVolume: kline[7],
+      count: kline[8],
+      takerBuyVolume: kline[9],
+      takerBuyQuoteVolume: kline[10],
+    }));
+  }
+
+  /**
    * 获取期货交易所信息
    */
   async getFuturesExchangeInfo(): Promise<any> {

@@ -1,6 +1,6 @@
 import { Injectable, OnModuleDestroy, Logger } from "@nestjs/common";
-// 使用 require 导入 JavaScript 模块
-const TradingViewLib = require("../lib/tradingview_api/main");
+// 使用路径映射导入 JavaScript 模块
+const TradingViewLib = require("@lib/tradingview_api/main");
 const { TradingView } = TradingViewLib;
 
 @Injectable()

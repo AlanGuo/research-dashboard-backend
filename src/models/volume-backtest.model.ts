@@ -43,7 +43,7 @@ export interface HourlyRankingItem {
   baseAsset: string;
   quoteAsset: string;
   priceChange24h: number; // 24小时价格变化百分比（负数表示跌幅）
-  priceAtTime: number; // 当前价格
+  priceAtTime: number; // 当前价格（现货）
   price24hAgo: number; // 24小时前价格
   volume24h: number; // 过去24小时成交量
   quoteVolume24h: number; // 过去24小时成交金额
@@ -51,6 +51,7 @@ export interface HourlyRankingItem {
   volatility24h: number; // 24小时波动率百分比
   high24h: number; // 24小时最高价
   low24h: number; // 24小时最低价
+  futurePriceAtTime?: number; // 期货价格（当前时间点）
 }
 
 export const VolumeBacktestSchema =
