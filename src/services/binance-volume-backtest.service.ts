@@ -597,20 +597,6 @@ export class BinanceVolumeBacktestService {
       }
 
       const symbolsArray = Array.from(allSymbols);
-      
-      // 双重检查：验证所有symbol是否真的有期货合约
-      this.logger.debug(`🔍 对 ${symbolsArray.length} 个ranking交易对进行期货合约双重检查...`);
-      const futuresAvailability = await this.binanceService.checkFuturesAvailability(symbolsArray);
-      const symbolsWithoutFutures = symbolsArray.filter(symbol => !futuresAvailability[symbol]);
-      
-      if (symbolsWithoutFutures.length > 0) {
-        this.logger.error(`🚨 发现 ${symbolsWithoutFutures.length} 个交易对在rankings中但没有期货合约！这是严重的过滤逻辑问题！`);
-        this.logger.error(`🚨 问题交易对: ${symbolsWithoutFutures.join(', ')}`);
-        this.logger.error(`🚨 建议清除相关缓存并重新运行`);
-      }
-      this.logger.debug(
-        `📊 获取 ${symbolsArray.length} 个交易对的资金费率历史: ${result.timestamp.toISOString()}`,
-      );
 
       // 批量获取资金费率历史
       const fundingRateMap = await this.getFundingRateHistoryBatch(
