@@ -159,6 +159,12 @@ export class BinanceVolumeBacktestService {
       throw new Error(`任务 ${taskId} 不存在`);
     }
 
+    // 动态计算运行时间
+    let currentProcessingTime = task.processingTimeMs || 0;
+    if (task.status === TaskStatus.RUNNING && task.startedAt) {
+      currentProcessingTime = Date.now() - task.startedAt.getTime();
+    }
+
     return {
       taskId: task.taskId,
       status: task.status,
@@ -166,7 +172,7 @@ export class BinanceVolumeBacktestService {
       startedAt: task.startedAt,
       completedAt: task.completedAt,
       errorMessage: task.errorMessage,
-      processingTimeMs: task.processingTimeMs,
+      processingTimeMs: currentProcessingTime,
       result: task.status === TaskStatus.COMPLETED ? task.result : null,
     };
   }
@@ -226,19 +232,27 @@ export class BinanceVolumeBacktestService {
     const total = await this.asyncBacktestTaskModel.countDocuments().exec();
 
     return {
-      tasks: tasks.map((task) => ({
-        taskId: task.taskId,
-        status: task.status,
-        currentTime: task.currentTime,
-        startedAt: task.startedAt,
-        completedAt: task.completedAt,
-        processingTimeMs: task.processingTimeMs,
-        params: {
-          startTime: task.params.startTime,
-          endTime: task.params.endTime,
-          granularityHours: task.params.granularityHours,
-        },
-      })),
+      tasks: tasks.map((task) => {
+        // 动态计算运行时间
+        let currentProcessingTime = task.processingTimeMs || 0;
+        if (task.status === TaskStatus.RUNNING && task.startedAt) {
+          currentProcessingTime = Date.now() - task.startedAt.getTime();
+        }
+
+        return {
+          taskId: task.taskId,
+          status: task.status,
+          currentTime: task.currentTime,
+          startedAt: task.startedAt,
+          completedAt: task.completedAt,
+          processingTimeMs: currentProcessingTime,
+          params: {
+            startTime: task.params.startTime,
+            endTime: task.params.endTime,
+            granularityHours: task.params.granularityHours,
+          },
+        };
+      }),
       total,
       limit,
       offset,
