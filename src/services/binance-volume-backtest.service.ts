@@ -579,7 +579,7 @@ export class BinanceVolumeBacktestService {
       // 计算时间范围：从当前时间（不包含）到下一个granularityHours时间点（包含）
       const currentTime = result.timestamp.getTime();
       const startTime = currentTime + (10 * 60 * 1000); // 当前时间后10分钟后开始（不包含当前时间点）
-      const endTime = currentTime + (granularityHours * 60 * 60 * 1000); // granularityHours小时后（包含该时间点）
+      const endTime = startTime + (granularityHours * 60 * 60 * 1000); // granularityHours小时后10分钟后开始（包含该时间点）
 
       // 验证时间计算结果
       if (isNaN(startTime) || isNaN(endTime)) {
