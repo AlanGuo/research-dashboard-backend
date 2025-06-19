@@ -15,7 +15,7 @@ export enum TaskStatus {
   CANCELLED = "cancelled",
 }
 
-@Schema({ timestamps: true })
+@Schema({ timestamps: true, collection: "async_backtest_tasks" })
 export class AsyncBacktestTask {
   @Prop({ required: true, unique: true })
   taskId: string;
