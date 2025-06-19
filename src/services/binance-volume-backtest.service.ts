@@ -1000,8 +1000,9 @@ export class BinanceVolumeBacktestService {
     // 1. 首先根据涨跌幅找出交易对
     for (const [symbol, window] of volumeWindows) {
       if (
-        window.quoteVolume24h >= minVolumeThreshold &&
-        window.data.length >= 24
+        window.data &&
+        window.data.length >= 24 &&
+        window.quoteVolume24h >= minVolumeThreshold
       ) {
         const latestKline = window.data[window.data.length - 1];
         const earliestKline = window.data[0];
@@ -2977,12 +2978,18 @@ export class BinanceVolumeBacktestService {
         { maxConcurrency, retryFailed: true },
       );
 
-      // 更新数据窗口
+      // 更新数据窗口，并移除没有数据的symbol
       for (const [symbol, klineData] of klineResults) {
         const window = volumeWindows.get(symbol);
-        if (window && klineData) {
+        if (window && klineData && klineData.length > 0) {
           window.data = klineData;
           this.updateWindowVolume(window);
+        } else {
+          // 如果没有获取到kline数据，从volumeWindows中移除该symbol
+          this.logger.warn(
+            `⚠️ ${symbol} 在时间段 ${startTime.toISOString()} - ${endTime.toISOString()} 没有kline数据，已从排行榜中排除`,
+          );
+          volumeWindows.delete(symbol);
         }
       }
 
@@ -2992,6 +2999,17 @@ export class BinanceVolumeBacktestService {
       }
     }
 
-    this.logger.debug(`✅ 预加载完成: ${symbols.length} 个数据窗口已初始化`);
+    const validSymbolsCount = volumeWindows.size;
+    const removedSymbolsCount = symbols.length - validSymbolsCount;
+
+    if (removedSymbolsCount > 0) {
+      this.logger.log(
+        `✅ 预加载完成: ${validSymbolsCount}/${symbols.length} 个数据窗口已初始化，${removedSymbolsCount} 个交易对因无数据被排除`,
+      );
+    } else {
+      this.logger.debug(
+        `✅ 预加载完成: ${validSymbolsCount} 个数据窗口已初始化`,
+      );
+    }
   }
 }

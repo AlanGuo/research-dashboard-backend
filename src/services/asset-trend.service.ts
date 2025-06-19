@@ -144,13 +144,17 @@ export class AssetTrendService {
 
   /**
    * 计算并存储所有资产在各趋势期间的表现
-   * @param forceUpdate 是否强制更新
-   * @param gliParams GLI参数，用于计算GLI趋势时段
+   * @param forceUpdate 是否强制更新（可选，默认为false）
    */
-  public async calculateAndStoreAllAssetTrends(
-    forceUpdate = false,
-  ): Promise<AssetTrend[]> {
+  public async calculateAndStoreAllAssetTrends(forceUpdate: boolean = false): Promise<AssetTrend[]> {
     try {
+      // 如果是强制更新，先删除所有现有的趋势数据
+      if (forceUpdate) {
+        console.log("强制更新模式：删除所有现有的资产趋势数据...");
+        await this.assetTrendModel.deleteMany({});
+        console.log("已删除所有现有的资产趋势数据");
+      }
+
       console.log("\n开始获取趋势期间数据...");
       // 获取所有趋势期间
       const centralBankTrendPeriods = this.gliService.centralBankTrendPeriods;
@@ -168,7 +172,7 @@ export class AssetTrendService {
       const results: AssetTrend[] = [];
 
       // 创建进度跟踪器
-      let processedAssets = 0;
+      // let processedAssets = 0;
       const totalAssets = assets.length;
       console.log(`\n开始处理 ${totalAssets} 个资产的趋势数据...`);
 
@@ -271,7 +275,7 @@ export class AssetTrendService {
           );
 
           // 更新进度
-          processedAssets++;
+          // processedAssets++;
           results.push(centralBankResult, m2Result);
 
           // 在处理下一个资产前等待1秒，避免请求过快
@@ -285,7 +289,7 @@ export class AssetTrendService {
           );
 
           // 更新进度
-          processedAssets++;
+          // processedAssets++;
           // 继续处理下一个资产
         }
       }

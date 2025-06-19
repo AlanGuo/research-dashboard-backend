@@ -1,5 +1,6 @@
 import { Injectable, OnModuleDestroy, Logger } from "@nestjs/common";
 // 使用路径映射导入 JavaScript 模块
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const TradingViewLib = require("@lib/tradingview_api/main");
 const { TradingView } = TradingViewLib;
 
