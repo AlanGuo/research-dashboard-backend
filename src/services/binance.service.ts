@@ -261,7 +261,10 @@ export class BinanceService {
 
       // 确保返回的是数组
       if (!Array.isArray(result)) {
-        this.logger.warn(`⚠️ ${params.symbol} 资金费率API返回非数组数据:`, result);
+        this.logger.warn(
+          `⚠️ ${params.symbol} 资金费率API返回非数组数据:`,
+          result,
+        );
         return [];
       }
 
@@ -444,7 +447,10 @@ export class BinanceService {
    * 将现货交易对映射到对应的期货交易对
    * 处理特殊情况，如 PEPEUSDT -> 1000PEPEUSDT
    */
-  private mapSpotToFutures(spotSymbol: string, futuresSymbols: Set<string>): string | null {
+  private mapSpotToFutures(
+    spotSymbol: string,
+    futuresSymbols: Set<string>,
+  ): string | null {
     // 1. 直接匹配（大多数情况）
     if (futuresSymbols.has(spotSymbol)) {
       return spotSymbol;
@@ -452,13 +458,13 @@ export class BinanceService {
 
     // 2. 特殊映射规则
     const specialMappings: { [spot: string]: string } = {
-      'PEPEUSDT': '1000PEPEUSDT',
-      'SHIBUSDT': '1000SHIBUSDT',
-      'LUNCUSDT': '1000LUNCUSDT',
-      'XECUSDT': '1000XECUSDT',
-      'FLOKIUSDT': '1000FLOKIUSDT',
-      'RATSUSDT': '1000RATSUSDT',
-      'BONKUSDT': '1000BONKUSDT',
+      PEPEUSDT: "1000PEPEUSDT",
+      SHIBUSDT: "1000SHIBUSDT",
+      LUNCUSDT: "1000LUNCUSDT",
+      XECUSDT: "1000XECUSDT",
+      FLOKIUSDT: "1000FLOKIUSDT",
+      RATSUSDT: "1000RATSUSDT",
+      BONKUSDT: "1000BONKUSDT",
       // 可以根据需要添加更多映射
     };
 
@@ -468,8 +474,8 @@ export class BinanceService {
     }
 
     // 3. 动态映射：尝试添加1000前缀
-    if (spotSymbol.endsWith('USDT')) {
-      const baseAsset = spotSymbol.replace('USDT', '');
+    if (spotSymbol.endsWith("USDT")) {
+      const baseAsset = spotSymbol.replace("USDT", "");
       const thousandPrefix = `1000${baseAsset}USDT`;
       if (futuresSymbols.has(thousandPrefix)) {
         return thousandPrefix;
@@ -493,7 +499,7 @@ export class BinanceService {
       const futuresSymbols = new Set<string>(
         perpetualContracts.map((s: any) => s.symbol as string),
       );
-      
+
       return this.mapSpotToFutures(spotSymbol, futuresSymbols);
     } catch (error) {
       this.logger.error(`映射期货交易对失败: ${spotSymbol}`, error);

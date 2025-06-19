@@ -10,6 +10,10 @@ import {
   SymbolFilterCache,
   SymbolFilterCacheSchema,
 } from "../models/symbol-filter-cache.model";
+import {
+  AsyncBacktestTask,
+  AsyncBacktestTaskSchema,
+} from "../models/async-backtest-task.model";
 import { ConfigModule } from "../config/config.module";
 import { BinanceModule } from "./binance.module";
 
@@ -18,6 +22,7 @@ import { BinanceModule } from "./binance.module";
     MongooseModule.forFeature([
       { name: VolumeBacktest.name, schema: VolumeBacktestSchema },
       { name: SymbolFilterCache.name, schema: SymbolFilterCacheSchema },
+      { name: AsyncBacktestTask.name, schema: AsyncBacktestTaskSchema },
     ]),
     ConfigModule,
     BinanceModule,

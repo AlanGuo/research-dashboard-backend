@@ -3,9 +3,9 @@ import { Document } from "mongoose";
 
 export type SymbolFilterCacheDocument = SymbolFilterCache & Document;
 
-@Schema({ 
+@Schema({
   timestamps: true,
-  collection: 'symbol_filter_caches'
+  collection: "symbol_filter_caches",
 })
 export class SymbolFilterCache {
   @Prop({ required: true })

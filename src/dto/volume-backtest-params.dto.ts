@@ -100,7 +100,7 @@ export interface VolumeBacktestResponse {
         sampleSymbols: string[];
       }[];
       filterCriteria: {
-        minHistoryDays: number
+        minHistoryDays: number;
       };
       invalidReasons?: { [reason: string]: number };
     };

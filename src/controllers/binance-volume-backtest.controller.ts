@@ -7,6 +7,8 @@ import {
   Logger,
   HttpException,
   HttpStatus,
+  Param,
+  Delete,
 } from "@nestjs/common";
 import { BinanceVolumeBacktestService } from "../services/binance-volume-backtest.service";
 import {
@@ -46,7 +48,7 @@ export class BinanceVolumeBacktestController {
           HttpStatus.BAD_REQUEST,
         );
       }
-      
+
       this.logger.log(`使用回测参数: ${JSON.stringify(params)}`);
       const result =
         await this.volumeBacktestService.executeVolumeBacktest(params);
@@ -95,7 +97,8 @@ export class BinanceVolumeBacktestController {
       let granularityHours = 8; // 默认值
       if (results.length >= 2) {
         // 计算前两个结果的时间间隔（毫秒）
-        const timeDiff = results[1].timestamp.getTime() - results[0].timestamp.getTime();
+        const timeDiff =
+          results[1].timestamp.getTime() - results[0].timestamp.getTime();
         // 转换为小时
         granularityHours = Math.round(timeDiff / (1000 * 60 * 60));
       }
@@ -155,19 +158,190 @@ export class BinanceVolumeBacktestController {
   }
 
   /**
-   * 测试期货API连通性
-   * GET /v1/binance/volume-backtest/test-futures-api
+   * 启动异步回测
+   * POST /v1/binance/volume-backtest/async
    */
-  @Get("test-futures-api")
-  async testFuturesApi() {
+  @Post("async")
+  async startAsyncBacktest(@Body() params: VolumeBacktestParamsDto) {
     try {
-      const result = await this.volumeBacktestService.testFuturesApi();
+      this.logger.log(`收到异步回测请求: ${JSON.stringify(params)}`);
+
+      // 验证时间范围
+      const startTime = new Date(params.startTime);
+      const endTime = new Date(params.endTime);
+      const timeDiff = endTime.getTime() - startTime.getTime();
+
+      if (timeDiff <= 0) {
+        throw new HttpException(
+          "结束时间必须大于开始时间",
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      const result =
+        await this.volumeBacktestService.startAsyncVolumeBacktest(params);
       return result;
     } catch (error) {
-      this.logger.error("测试期货API失败:", error);
+      this.logger.error("启动异步回测失败:", error);
       throw new HttpException(
-        error.message || "测试期货API失败",
-        HttpStatus.INTERNAL_SERVER_ERROR,
+        error.message || "启动异步回测失败",
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * 查询异步回测进度
+   * GET /v1/binance/volume-backtest/async/:taskId/progress
+   */
+  @Get("async/:taskId/progress")
+  async getAsyncBacktestProgress(@Param("taskId") taskId: string) {
+    try {
+      const progress =
+        await this.volumeBacktestService.getAsyncBacktestProgress(taskId);
+      return progress;
+    } catch (error) {
+      this.logger.error(`查询任务 ${taskId} 进度失败:`, error);
+      throw new HttpException(
+        error.message || "查询进度失败",
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * 获取异步回测结果
+   * GET /v1/binance/volume-backtest/async/:taskId/result
+   */
+  @Get("async/:taskId/result")
+  async getAsyncBacktestResult(@Param("taskId") taskId: string) {
+    try {
+      const result =
+        await this.volumeBacktestService.getAsyncBacktestResult(taskId);
+      return result;
+    } catch (error) {
+      this.logger.error(`获取任务 ${taskId} 结果失败:`, error);
+      throw new HttpException(
+        error.message || "获取结果失败",
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * 取消异步回测
+   * DELETE /v1/binance/volume-backtest/async/:taskId
+   */
+  @Delete("async/:taskId")
+  async cancelAsyncBacktest(@Param("taskId") taskId: string) {
+    try {
+      const result =
+        await this.volumeBacktestService.cancelAsyncBacktest(taskId);
+      return result;
+    } catch (error) {
+      this.logger.error(`取消任务 ${taskId} 失败:`, error);
+      throw new HttpException(
+        error.message || "取消任务失败",
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * 获取异步回测任务列表
+   * GET /v1/binance/volume-backtest/async/tasks
+   */
+  @Get("async/tasks")
+  async getAsyncBacktestTasks(
+    @Query("limit") limit?: number,
+    @Query("offset") offset?: number,
+  ) {
+    try {
+      const tasks = await this.volumeBacktestService.getAsyncBacktestTasks(
+        limit || 20,
+        offset || 0,
+      );
+      return tasks;
+    } catch (error) {
+      this.logger.error("获取任务列表失败:", error);
+      throw new HttpException(
+        error.message || "获取任务列表失败",
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * 恢复中断的异步回测任务
+   * POST /v1/binance/volume-backtest/async/:taskId/resume
+   */
+  @Post("async/:taskId/resume")
+  async resumeInterruptedTask(@Param("taskId") taskId: string) {
+    try {
+      const result =
+        await this.volumeBacktestService.resumeInterruptedTask(taskId);
+      return result;
+    } catch (error) {
+      this.logger.error(`恢复任务 ${taskId} 失败:`, error);
+      throw new HttpException(
+        error.message || "恢复任务失败",
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * 清理中断的异步回测任务
+   * POST /v1/binance/volume-backtest/async/:taskId/cleanup
+   */
+  @Post("async/:taskId/cleanup")
+  async cleanupInterruptedTask(@Param("taskId") taskId: string) {
+    try {
+      const result =
+        await this.volumeBacktestService.cleanupInterruptedTask(taskId);
+      return result;
+    } catch (error) {
+      this.logger.error(`清理任务 ${taskId} 失败:`, error);
+      throw new HttpException(
+        error.message || "清理任务失败",
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * 获取所有中断的任务
+   * GET /v1/binance/volume-backtest/async/interrupted
+   */
+  @Get("async/interrupted")
+  async getInterruptedTasks() {
+    try {
+      const tasks = await this.volumeBacktestService.getInterruptedTasks();
+      return tasks;
+    } catch (error) {
+      this.logger.error("获取中断任务列表失败:", error);
+      throw new HttpException(
+        error.message || "获取中断任务列表失败",
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * 批量清理所有中断的任务
+   * POST /v1/binance/volume-backtest/async/cleanup-all
+   */
+  @Post("async/cleanup-all")
+  async cleanupAllInterruptedTasks() {
+    try {
+      const result =
+        await this.volumeBacktestService.cleanupAllInterruptedTasks();
+      return result;
+    } catch (error) {
+      this.logger.error("批量清理中断任务失败:", error);
+      throw new HttpException(
+        error.message || "批量清理失败",
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
