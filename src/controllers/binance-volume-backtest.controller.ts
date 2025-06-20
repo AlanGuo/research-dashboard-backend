@@ -209,24 +209,7 @@ export class BinanceVolumeBacktestController {
     }
   }
 
-  /**
-   * 获取异步回测结果
-   * GET /v1/binance/volume-backtest/async/:taskId/result
-   */
-  @Get("async/:taskId/result")
-  async getAsyncBacktestResult(@Param("taskId") taskId: string) {
-    try {
-      const result =
-        await this.volumeBacktestService.getAsyncBacktestResult(taskId);
-      return result;
-    } catch (error) {
-      this.logger.error(`获取任务 ${taskId} 结果失败:`, error);
-      throw new HttpException(
-        error.message || "获取结果失败",
-        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
-  }
+
 
   /**
    * 取消异步回测

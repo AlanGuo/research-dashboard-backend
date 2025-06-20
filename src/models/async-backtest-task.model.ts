@@ -1,9 +1,6 @@
 import { Prop, Schema, SchemaFactory } from "@nestjs/mongoose";
 import { Document } from "mongoose";
-import {
-  VolumeBacktestParamsDto,
-  VolumeBacktestResponse,
-} from "../dto/volume-backtest-params.dto";
+import { VolumeBacktestParamsDto } from "../dto/volume-backtest-params.dto";
 
 export type AsyncBacktestTaskDocument = AsyncBacktestTask & Document;
 
@@ -38,8 +35,7 @@ export class AsyncBacktestTask {
   @Prop()
   errorMessage: string;
 
-  @Prop({ type: Object })
-  result: VolumeBacktestResponse;
+  // result字段已移除，因为回测结果数据存储在VolumeBacktest集合中
 
   @Prop({ default: 0 })
   processingTimeMs: number;

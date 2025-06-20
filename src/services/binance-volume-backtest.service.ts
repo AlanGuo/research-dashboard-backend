@@ -173,28 +173,11 @@ export class BinanceVolumeBacktestService {
       completedAt: task.completedAt,
       errorMessage: task.errorMessage,
       processingTimeMs: currentProcessingTime,
-      result: task.status === TaskStatus.COMPLETED ? task.result : null,
+      // 不再返回result，因为结果数据已存储在VolumeBacktest集合中
     };
   }
 
-  /**
-   * 获取异步回测任务结果
-   */
-  async getAsyncBacktestResult(
-    taskId: string,
-  ): Promise<VolumeBacktestResponse> {
-    const task = await this.asyncBacktestTaskModel.findOne({ taskId }).exec();
 
-    if (!task) {
-      throw new Error(`任务 ${taskId} 不存在`);
-    }
-
-    if (task.status !== TaskStatus.COMPLETED) {
-      throw new Error(`任务 ${taskId} 尚未完成，当前状态: ${task.status}`);
-    }
-
-    return task.result;
-  }
 
   /**
    * 取消异步回测任务
@@ -297,7 +280,6 @@ export class BinanceVolumeBacktestService {
       // 保存结果并更新任务状态
       await this.updateTaskStatus(taskId, TaskStatus.COMPLETED, null, {
         processingTimeMs: processingTime,
-        result: result,
       });
 
       this.logger.log(`异步回测任务 ${taskId} 完成，用时 ${processingTime}ms`);
@@ -474,28 +456,9 @@ export class BinanceVolumeBacktestService {
 
       const processingTime = Date.now() - startExecution;
 
-      // 合并新结果和可能已存在的结果
-      let finalResult = result;
-      if (task.result) {
-        // 如果之前已经有部分结果，需要合并
-        this.logger.log(
-          `合并新结果（${result.data.length}个数据点）和已存在结果（${task.result.data.length}个数据点）`,
-        );
-        finalResult = {
-          ...result,
-          data: [...task.result.data, ...result.data],
-          meta: {
-            ...result.meta,
-            dataPoints: task.result.data.length + result.data.length,
-            processingTime: (task.processingTimeMs || 0) + processingTime,
-          },
-        };
-      }
-
-      // 保存最终结果并更新任务状态
+      // 更新任务状态（不再存储result数据，因为已保存在VolumeBacktest集合中）
       await this.updateTaskStatus(taskId, TaskStatus.COMPLETED, null, {
         processingTimeMs: (task.processingTimeMs || 0) + processingTime,
-        result: finalResult,
       });
 
       this.logger.log(
