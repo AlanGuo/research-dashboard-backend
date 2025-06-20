@@ -8,7 +8,7 @@
 const { MongoClient } = require('mongodb');
 
 // 配置数据库连接
-const MONGO_URL = process.env.MONGO_URL || 'mongodb://localhost:27017/research-dashboard';
+const MONGO_URL = process.env.MONGO_URL || 'mongodb://localhost:27017/research_dashboard';
 
 async function optimizeIndexes() {
   const client = new MongoClient(MONGO_URL);

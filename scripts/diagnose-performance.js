@@ -8,7 +8,7 @@
 const { MongoClient } = require('mongodb');
 
 // 配置
-const MONGO_URL = process.env.MONGO_URL || 'mongodb://localhost:27017/research-dashboard';
+const MONGO_URL = process.env.MONGO_URL || 'mongodb://localhost:27017/research_dashboard';
 const TEST_START_TIME = new Date('2025-01-01');
 const TEST_END_TIME = new Date('2025-06-20');
 
