@@ -111,6 +111,8 @@ export class BinanceVolumeBacktestController {
           hour: result.hour,
           btcPrice: result.btcPrice,
           btcPriceChange24h: result.btcPriceChange24h,
+          btcdomPrice: result.btcdomPrice,
+          btcdomPriceChange24h: result.btcdomPriceChange24h,
           rankings: result.rankings,
           removedSymbols: result.removedSymbols || [], // 从上一期排名中移除的交易对
           marketStats: {
@@ -153,6 +155,54 @@ export class BinanceVolumeBacktestController {
       throw new HttpException(
         error.message || "清理缓存失败",
         HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * 补充现有数据的BTCDOM价格
+   * POST /v1/binance/volume-backtest/supplement-btcdom-prices
+   */
+  @Post("supplement-btcdom-prices")
+  async supplementBtcdomPrices(
+    @Body() params: {
+      startTime?: string;
+      endTime?: string;
+    }
+  ) {
+    try {
+      this.logger.log(`收到补充BTCDOM价格请求: ${JSON.stringify(params)}`);
+
+      let startTime: Date | undefined;
+      let endTime: Date | undefined;
+
+      if (params.startTime) {
+        startTime = new Date(params.startTime);
+      }
+
+      if (params.endTime) {
+        endTime = new Date(params.endTime);
+      }
+
+      // 验证时间范围
+      if (startTime && endTime && startTime >= endTime) {
+        throw new HttpException(
+          "结束时间必须大于开始时间",
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      const result = await this.volumeBacktestService.supplementBtcdomPrices(
+        startTime,
+        endTime,
+      );
+
+      return result;
+    } catch (error) {
+      this.logger.error("补充BTCDOM价格失败:", error);
+      throw new HttpException(
+        error.message || "补充BTCDOM价格失败",
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }

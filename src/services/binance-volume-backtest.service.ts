@@ -622,6 +622,8 @@ export class BinanceVolumeBacktestService {
           removedSymbols: item.removedSymbols || [],
           btcPrice: item.btcPrice,
           btcPriceChange24h: item.btcPriceChange24h,
+          btcdomPrice: item.btcdomPrice,
+          btcdomPriceChange24h: item.btcdomPriceChange24h,
           marketStats: {
             totalVolume: item.totalMarketVolume,
             totalQuoteVolume: item.totalMarketQuoteVolume,
@@ -823,6 +825,8 @@ export class BinanceVolumeBacktestService {
           removedSymbols: result.removedSymbols || [], // 从上一期排名中移除的交易对
           btcPrice: result.btcPrice, // 添加BTC价格
           btcPriceChange24h: result.btcPriceChange24h, // 添加BTC价格变化率
+          btcdomPrice: result.btcdomPrice, // 添加BTCDOM价格
+          btcdomPriceChange24h: result.btcdomPriceChange24h, // 添加BTCDOM价格变化率
           marketStats: {
             totalVolume: result.totalMarketVolume,
             totalQuoteVolume: result.totalMarketQuoteVolume,
@@ -2589,6 +2593,84 @@ export class BinanceVolumeBacktestService {
         }
       }
 
+      // 获取BTCDOM合约价格和24小时前价格（带重试机制）
+      let btcdomPrice = 0;
+      let btcdomPriceChange24h = 0;
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          // 一次性获取过去25小时的BTCDOM价格数据（包含当前小时和24小时前）
+          const btcdom25hAgoTime = currentTime.getTime() - 25 * 60 * 60 * 1000;
+          const btcdomKlines = await this.binanceService.getFuturesKlines({
+            symbol: "BTCDOMUSDT",
+            interval: "1h",
+            startTime: btcdom25hAgoTime,
+            endTime: currentTime.getTime() + 60 * 60 * 1000, // +1小时
+            limit: 26, // 获取26个小时的数据，确保覆盖所需时间范围
+          });
+
+          if (btcdomKlines && btcdomKlines.length >= 2) {
+            // 最新的K线是当前价格，倒数第25个（如果有的话）是24小时前的价格
+            const currentKline = btcdomKlines[btcdomKlines.length - 1]; // 最新价格
+            const target24hAgoTime =
+              currentTime.getTime() - 24 * 60 * 60 * 1000;
+
+            // 找到最接近24小时前的K线数据
+            let btcdom24hAgoKline = null;
+            let minTimeDiff = Infinity;
+
+            for (const kline of btcdomKlines) {
+              const timeDiff = Math.abs(kline.openTime - target24hAgoTime);
+              if (timeDiff < minTimeDiff) {
+                minTimeDiff = timeDiff;
+                btcdom24hAgoKline = kline;
+              }
+            }
+
+            if (currentKline && btcdom24hAgoKline) {
+              btcdomPrice = parseFloat(currentKline.open);
+              const btcdomPrice24hAgo = parseFloat(btcdom24hAgoKline.open);
+
+              if (btcdomPrice24hAgo > 0) {
+                btcdomPriceChange24h =
+                  ((btcdomPrice - btcdomPrice24hAgo) / btcdomPrice24hAgo) * 100;
+                this.logger.debug(
+                  `📈 BTCDOM价格变化 (${currentTime.toISOString()}): ${btcdomPrice.toFixed(2)} (24h: ${btcdomPriceChange24h > 0 ? "+" : ""}${btcdomPriceChange24h.toFixed(2)}%)`,
+                );
+              } else {
+                this.logger.warn(
+                  `⚠️ BTCDOM 24小时前价格数据异常: ${btcdomPrice24hAgo}`,
+                );
+                btcdomPriceChange24h = 0;
+              }
+
+              break; // 成功获取，跳出重试循环
+            } else {
+              this.logger.warn(`⚠️ 无法从K线数据中提取有效的BTCDOM价格信息`);
+            }
+          } else {
+            this.logger.warn(
+              `⚠️ 无法获取足够的BTCDOM价格历史数据: ${currentTime.toISOString()} (尝试 ${attempt}/${maxRetries})`,
+            );
+          }
+        } catch (error) {
+          const isLastAttempt = attempt === maxRetries;
+          if (isLastAttempt) {
+            this.logger.error(
+              `❌ 获取BTCDOM价格最终失败 (已重试${maxRetries}次): ${error.message}`,
+            );
+            // 如果获取BTCDOM价格失败，继续执行，但价格设为0
+            btcdomPrice = 0;
+            btcdomPriceChange24h = 0;
+          } else {
+            this.logger.warn(
+              `⚠️ 获取BTCDOM价格失败，正在重试 (${attempt}/${maxRetries}): ${error.message}`,
+            );
+            // 等待后重试
+            await this.delay(1000 * attempt); // 1s, 2s, 3s递增延迟
+          }
+        }
+      }
+
       // 计算合并排行榜（按涨跌幅排序，跌幅最大的在前）
       let rankings = this.calculateRankings(
         volumeWindows,
@@ -2628,6 +2710,8 @@ export class BinanceVolumeBacktestService {
             totalMarketQuoteVolume: marketStats.totalQuoteVolume,
             btcPrice, // 添加BTC价格
             btcPriceChange24h, // 添加BTC价格变化率
+            btcdomPrice, // 添加BTCDOM价格
+            btcdomPriceChange24h, // 添加BTCDOM价格变化率
             calculationDuration: Date.now() - periodStart,
             createdAt: new Date(),
           },
@@ -2637,6 +2721,9 @@ export class BinanceVolumeBacktestService {
         this.logger.log(`💾 ${currentTime.toISOString()} 排行榜已保存:`);
         this.logger.log(
           `   📈 BTC价格: $${btcPrice.toFixed(2)} (24h: ${btcPriceChange24h > 0 ? "+" : ""}${btcPriceChange24h.toFixed(2)}%)`,
+        );
+        this.logger.log(
+          `   📊 BTCDOM价格: ${btcdomPrice.toFixed(2)} (24h: ${btcdomPriceChange24h > 0 ? "+" : ""}${btcdomPriceChange24h.toFixed(2)}%)`,
         );
         this.logger.log(
           `   📉 跌幅前3名: ${rankings
@@ -2974,5 +3061,198 @@ export class BinanceVolumeBacktestService {
         `✅ 预加载完成: ${validSymbolsCount} 个数据窗口已初始化`,
       );
     }
+  }
+
+  /**
+   * 补充现有数据中缺失的BTCDOM价格信息
+   * @param startTime 开始时间
+   * @param endTime 结束时间
+   * @returns 更新结果
+   */
+  async supplementBtcdomPrices(
+    startTime?: Date,
+    endTime?: Date,
+  ): Promise<{
+    success: boolean;
+    updated: number;
+    skipped: number;
+    failed: number;
+    message: string;
+  }> {
+    const start = Date.now();
+    this.logger.log('🔄 开始补充BTCDOM价格数据...');
+
+    try {
+      // 构建查询条件：查找没有BTCDOM价格的记录
+      const query: any = {
+        $or: [
+          { btcdomPrice: { $exists: false } },
+          { btcdomPrice: null },
+          { btcdomPriceChange24h: { $exists: false } },
+          { btcdomPriceChange24h: null },
+        ],
+      };
+
+      if (startTime && endTime) {
+        // 如果同时提供了开始和结束时间，使用闭区间查询
+        query.timestamp = { $gte: startTime, $lte: endTime };
+      } else if (startTime) {
+        // 只有开始时间，查询大于等于开始时间的记录
+        query.timestamp = { $gte: startTime };
+      } else if (endTime) {
+        // 只有结束时间，查询小于等于结束时间的记录
+        query.timestamp = { $lte: endTime };
+      }
+      // 如果都没有提供，则查询所有缺失BTCDOM价格的记录
+
+      // 获取需要补充的记录
+      const recordsToUpdate = await this.volumeBacktestModel
+        .find(query)
+        .sort({ timestamp: 1 })
+        .exec();
+
+      if (recordsToUpdate.length === 0) {
+        return {
+          success: true,
+          updated: 0,
+          skipped: 0,
+          failed: 0,
+          message: '没有需要补充BTCDOM价格的记录',
+        };
+      }
+
+      this.logger.log(`📋 找到 ${recordsToUpdate.length} 条需要补充BTCDOM价格的记录`);
+
+      let updated = 0;
+      let skipped = 0;
+      let failed = 0;
+
+      // 批量处理记录
+      for (const record of recordsToUpdate) {
+        try {
+          const currentTime = record.timestamp;
+          
+          // 获取BTCDOM价格
+          const { btcdomPrice, btcdomPriceChange24h } = await this.fetchBtcdomPrice(currentTime);
+
+          if (btcdomPrice > 0) {
+            // 更新记录
+            await this.volumeBacktestModel.updateOne(
+              { _id: record._id },
+              {
+                $set: {
+                  btcdomPrice,
+                  btcdomPriceChange24h,
+                },
+              },
+            );
+            updated++;
+            
+            if (updated % 10 === 0) {
+              this.logger.log(`📈 已更新 ${updated}/${recordsToUpdate.length} 条记录`);
+            }
+          } else {
+            this.logger.warn(`⚠️ 无法获取 ${currentTime.toISOString()} 的BTCDOM价格`);
+            skipped++;
+          }
+
+          // 添加延迟避免API限制
+          if (updated % 5 === 0) {
+            await this.delay(1000);
+          }
+        } catch (error) {
+          this.logger.error(`❌ 更新记录失败 ${record.timestamp.toISOString()}: ${error.message}`);
+          failed++;
+        }
+      }
+
+      const duration = Date.now() - start;
+      const message = `BTCDOM价格补充完成: 更新 ${updated} 条，跳过 ${skipped} 条，失败 ${failed} 条，耗时 ${(duration / 1000).toFixed(2)}s`;
+      
+      this.logger.log(`✅ ${message}`);
+
+      return {
+        success: true,
+        updated,
+        skipped,
+        failed,
+        message,
+      };
+    } catch (error) {
+      this.logger.error(`❌ 补充BTCDOM价格失败: ${error.message}`);
+      return {
+        success: false,
+        updated: 0,
+        skipped: 0,
+        failed: 0,
+        message: `补充失败: ${error.message}`,
+      };
+    }
+  }
+
+  /**
+   * 获取指定时间的BTCDOM价格信息
+   * @param currentTime 当前时间
+   * @returns BTCDOM价格和变化率
+   */
+  private async fetchBtcdomPrice(currentTime: Date): Promise<{
+    btcdomPrice: number;
+    btcdomPriceChange24h: number;
+  }> {
+    const maxRetries = 3;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        // 获取过去25小时的BTCDOM价格数据
+        const btcdom25hAgoTime = currentTime.getTime() - 25 * 60 * 60 * 1000;
+        const btcdomKlines = await this.binanceService.getFuturesKlines({
+          symbol: "BTCDOMUSDT",
+          interval: "1h",
+          startTime: btcdom25hAgoTime,
+          endTime: currentTime.getTime() + 60 * 60 * 1000,
+          limit: 26,
+        });
+
+        if (btcdomKlines && btcdomKlines.length >= 2) {
+          const currentKline = btcdomKlines[btcdomKlines.length - 1];
+          const target24hAgoTime = currentTime.getTime() - 24 * 60 * 60 * 1000;
+
+          // 找到最接近24小时前的K线数据
+          let btcdom24hAgoKline = null;
+          let minTimeDiff = Infinity;
+
+          for (const kline of btcdomKlines) {
+            const timeDiff = Math.abs(kline.openTime - target24hAgoTime);
+            if (timeDiff < minTimeDiff) {
+              minTimeDiff = timeDiff;
+              btcdom24hAgoKline = kline;
+            }
+          }
+
+          if (currentKline && btcdom24hAgoKline) {
+            const btcdomPrice = parseFloat(currentKline.open);
+            const btcdomPrice24hAgo = parseFloat(btcdom24hAgoKline.open);
+
+            let btcdomPriceChange24h = 0;
+            if (btcdomPrice24hAgo > 0) {
+              btcdomPriceChange24h = ((btcdomPrice - btcdomPrice24hAgo) / btcdomPrice24hAgo) * 100;
+            }
+
+            return { btcdomPrice, btcdomPriceChange24h };
+          }
+        }
+
+        // 如果不是最后一次尝试，等待后重试
+        if (attempt < maxRetries) {
+          await this.delay(1000 * attempt);
+        }
+      } catch (error) {
+        if (attempt === maxRetries) {
+          this.logger.warn(`⚠️ 获取BTCDOM价格失败 (${currentTime.toISOString()}): ${error.message}`);
+        }
+      }
+    }
+
+    return { btcdomPrice: 0, btcdomPriceChange24h: 0 };
   }
 }

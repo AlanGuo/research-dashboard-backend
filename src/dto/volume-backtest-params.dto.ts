@@ -73,6 +73,8 @@ export interface VolumeBacktestResponse {
     removedSymbols: HourlyRankingItem[]; // 从上一期排名中移除的交易对及其当前时间点的数据
     btcPrice: number; // BTC现货价格
     btcPriceChange24h: number; // BTC相对24小时前价格的变化率（百分比）
+    btcdomPrice?: number; // BTCDOM合约价格
+    btcdomPriceChange24h?: number; // BTCDOM相对24小时前价格的变化率（百分比）
     marketStats: {
       totalVolume: number;
       totalQuoteVolume: number;

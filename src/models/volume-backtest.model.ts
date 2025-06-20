@@ -29,6 +29,12 @@ export class VolumeBacktest {
   @Prop({ required: true })
   btcPriceChange24h: number; // BTC相对24小时前价格的变化率（百分比）
 
+  @Prop()
+  btcdomPrice?: number; // BTCDOM合约价格
+
+  @Prop()
+  btcdomPriceChange24h?: number; // BTCDOM相对24小时前价格的变化率（百分比）
+
   @Prop({ default: Date.now })
   createdAt: Date;
 
@@ -79,5 +85,8 @@ VolumeBacktestSchema.index({ "rankings.symbol": 1, timestamp: 1 });
 // 4. 复合索引：时间 + BTC价格 (用于价格相关查询)
 VolumeBacktestSchema.index({ timestamp: 1, btcPrice: 1 });
 
-// 5. 稀疏索引：创建时间 (用于数据管理)
+// 5. 复合索引：时间 + BTCDOM价格 (用于BTCDOM价格相关查询)
+VolumeBacktestSchema.index({ timestamp: 1, btcdomPrice: 1 });
+
+// 6. 稀疏索引：创建时间 (用于数据管理)
 VolumeBacktestSchema.index({ createdAt: 1 }, { sparse: true });
