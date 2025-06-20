@@ -85,13 +85,15 @@ async function performanceDiagnostics() {
     
     const executionStats = explain.executionStats;
     console.log(`  查询执行时间: ${executionStats.executionTimeMillis}ms`);
-    console.log(`  检查的文档数: ${executionStats.totalDocsExamined.toLocaleString()}`);
-    console.log(`  返回的文档数: ${executionStats.totalDocsReturned.toLocaleString()}`);
-    console.log(`  使用的索引: ${executionStats.winningPlan.inputStage?.indexName || '未使用索引'}`);
+    console.log(`  检查的文档数: ${executionStats.totalDocsExamined?.toLocaleString() || '未知'}`);
+    console.log(`  返回的文档数: ${executionStats.totalDocsReturned?.toLocaleString() || '未知'}`);
+    console.log(`  使用的索引: ${executionStats.winningPlan?.inputStage?.indexName || '未使用索引'}`);
     
     // 6. 性能评估
     console.log('\n🎯 性能评估:');
-    const efficiency = executionStats.totalDocsReturned / executionStats.totalDocsExamined;
+    const efficiency = (executionStats.totalDocsReturned && executionStats.totalDocsExamined) 
+      ? executionStats.totalDocsReturned / executionStats.totalDocsExamined 
+      : 0;
     console.log(`  查询效率: ${(efficiency * 100).toFixed(2)}% (理想值接近100%)`);
     
     if (efficiency < 0.1) {
@@ -112,7 +114,7 @@ async function performanceDiagnostics() {
     
     // 7. 建议
     console.log('\n💡 优化建议:');
-    if (executionStats.winningPlan.inputStage?.indexName) {
+    if (executionStats.winningPlan?.inputStage?.indexName) {
       console.log(`  ✅ 查询使用了索引: ${executionStats.winningPlan.inputStage.indexName}`);
     } else {
       console.log(`  ❌ 查询未使用索引，这是主要性能问题！`);
