@@ -66,7 +66,18 @@ export interface HourlyRankingItem {
 export const VolumeBacktestSchema =
   SchemaFactory.createForClass(VolumeBacktest);
 
-// 创建索引
+// 创建优化索引
+// 1. 主查询索引：时间范围查询 + 排序
 VolumeBacktestSchema.index({ timestamp: 1 });
-VolumeBacktestSchema.index({ hour: 1 });
-VolumeBacktestSchema.index({ "rankings.symbol": 1 });
+
+// 2. 复合索引：时间 + 小时 (用于精确查询)
+VolumeBacktestSchema.index({ timestamp: 1, hour: 1 });
+
+// 3. 复合索引：交易对 + 时间 (用于特定交易对的历史查询)
+VolumeBacktestSchema.index({ "rankings.symbol": 1, timestamp: 1 });
+
+// 4. 复合索引：时间 + BTC价格 (用于价格相关查询)
+VolumeBacktestSchema.index({ timestamp: 1, btcPrice: 1 });
+
+// 5. 稀疏索引：创建时间 (用于数据管理)
+VolumeBacktestSchema.index({ createdAt: 1 }, { sparse: true });
