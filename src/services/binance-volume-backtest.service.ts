@@ -2650,7 +2650,7 @@ export class BinanceVolumeBacktestService {
             }
           } else {
             this.logger.warn(
-              `⚠️ 无法获取足够的BTCDOM价格历史数据: ${currentTime.toISOString()}`,
+              `⚠️ 无BTCDOM价格历史数据: ${currentTime.toISOString()}`,
             );
             // 数据不足通常是历史时间太早，不需要重试
             break;
