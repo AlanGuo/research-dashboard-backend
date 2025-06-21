@@ -2646,11 +2646,14 @@ export class BinanceVolumeBacktestService {
               break; // 成功获取，跳出重试循环
             } else {
               this.logger.warn(`⚠️ 无法从K线数据中提取有效的BTCDOM价格信息`);
+              // 重试
             }
           } else {
             this.logger.warn(
-              `⚠️ 无法获取足够的BTCDOM价格历史数据: ${currentTime.toISOString()} (尝试 ${attempt}/${maxRetries})`,
+              `⚠️ 无法获取足够的BTCDOM价格历史数据: ${currentTime.toISOString()}`,
             );
+            // 数据不足通常是历史时间太早，不需要重试
+            break;
           }
         } catch (error) {
           const isLastAttempt = attempt === maxRetries;
