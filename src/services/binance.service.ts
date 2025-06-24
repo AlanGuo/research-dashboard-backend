@@ -371,31 +371,6 @@ export class BinanceService {
   }
 
   /**
-   * 测试API连通性
-   */
-  async testConnectivity(): Promise<{
-    success: boolean;
-    serverTime: string;
-    message: string;
-  }> {
-    try {
-      this.logger.log("开始测试Binance API连通性...");
-
-      const timeData = await this.getServerTime();
-      this.logger.log(`Binance服务器时间: ${timeData.localTime}`);
-
-      return {
-        success: true,
-        serverTime: timeData.localTime,
-        message: "Binance API连接正常",
-      };
-    } catch (error) {
-      this.logger.error("Binance API连通性测试失败:", error);
-      throw error;
-    }
-  }
-
-  /**
    * 测试期货API连通性
    */
   async testFuturesConnectivity(): Promise<{

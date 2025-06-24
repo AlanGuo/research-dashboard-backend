@@ -71,6 +71,7 @@ export class TradingViewService implements OnModuleDestroy {
       );
     }
   }
+  
 
   /**
    * 检查客户端健康状态
@@ -333,6 +334,217 @@ export class TradingViewService implements OnModuleDestroy {
     } catch (error) {
       this.logger.error(
         `[${requestId}] Error fetching K-line data for ${symbol}: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Get temperature indicator data for a specific symbol
+   * @param symbolId Symbol ID to fetch indicator for (e.g., 'BINANCE:BTCUSDT')
+   * @param timeframe Time interval (e.g., 'D', '240', '60')
+   * @param session Session token for TradingView API
+   * @param signature Signature for TradingView API
+   * @param indicatorName Temperature indicator name from config
+   * @returns Temperature indicator data
+   */
+  async getTemperatureIndicator(
+    symbolId: string,
+    timeframe: string,
+    session: string,
+    signature: string,
+    indicatorName: string,
+  ): Promise<any> {
+    this.requestCounter++;
+    const requestId = `TEMP_${this.requestCounter}_${Date.now()}`;
+    this.logger.log(
+      `[${requestId}] Temperature indicator request: ${symbolId}, ${timeframe}`,
+    );
+
+    // 检查是否需要重置客户端
+    if (this.requestCounter >= this.RESET_THRESHOLD) {
+      this.logger.warn(
+        `Request threshold reached (${this.requestCounter}), resetting client...`,
+      );
+      await this.resetClient();
+    }
+
+    // 检查超时请求数量是否超过阈值
+    if (this.timeoutCounter >= this.TIMEOUT_RESET_THRESHOLD) {
+      this.logger.warn(
+        `Timeout threshold reached (${this.timeoutCounter}), resetting client...`,
+      );
+      await this.resetClient();
+    }
+
+    try {
+      const formattedSymbol = this.formatSymbol(symbolId);
+      const tvInterval = this.mapToTVInterval(timeframe);
+      
+      // Create a unique chart ID for this request
+      const chartId = `temp_${formattedSymbol}_${tvInterval}_${Math.random().toString(36).slice(2)}`;
+      this.logger.debug(`[${requestId}] Created chart ID: ${chartId}`);
+
+      if (this.charts.has(chartId)) {
+        this.logger.warn(
+          `[${requestId}] Chart ID collision detected, cleaning up existing chart`,
+        );
+        this.cleanupChart(chartId);
+      }
+
+      // Create a new client with custom session and signature
+      const customClient = new TradingView.Client({
+        token: session,
+        signature
+      });
+
+      const chart = new customClient.Session.Chart();
+      const startTime = new Date().getTime();
+
+      // 存储chart信息
+      this.charts.set(chartId, {
+        chart,
+        createdAt: startTime,
+        symbol: formattedSymbol,
+        interval: tvInterval,
+      });
+
+      this.logger.debug(
+        `[${requestId}] Chart created, active charts: ${this.charts.size}`,
+      );
+
+      // 使用Promise.race实现可靠的超时处理
+      const indicatorPromise = new Promise(async (resolve, reject) => {
+        try {
+          // 设置错误处理
+          chart.onError((...err: any[]) => {
+            this.logger.error(
+              `[${requestId}] Chart error for ${formattedSymbol}: ${err.join(" ")}`,
+            );
+            this.cleanupChart(chartId);
+            reject(
+              new Error(
+                `Failed to fetch temperature indicator for ${formattedSymbol}: ${err.join(" ")}`,
+              ),
+            );
+          });
+
+          // 设置市场
+          chart.setMarket(formattedSymbol, {
+            timeframe: tvInterval,
+            range: 2,
+            adjustment: "dividends",
+          });
+
+          this.logger.debug(
+            `[${requestId}] Loading temperature indicator: ${indicatorName}`,
+          );
+
+          // 获取指标
+          const tempIndicator = await TradingView.getIndicator(
+            indicatorName,
+            "last",
+            session,
+            signature,
+          );
+
+          if (!tempIndicator) {
+            this.cleanupChart(chartId);
+            reject(new Error(`Temperature indicator ${indicatorName} not found`));
+            return;
+          }
+
+          const liveIndicator = new chart.Study(tempIndicator);
+
+          liveIndicator.onReady(() => {
+            this.logger.debug(
+              `[${requestId}] Temperature indicator ${indicatorName} loaded`,
+            );
+          });
+
+          liveIndicator.onUpdate(() => {
+            try {
+              const periods = liveIndicator.periods || [];
+              this.logger.debug(
+                `[${requestId}] Received ${periods.length} indicator periods for ${formattedSymbol}`,
+              );
+
+              // 计算请求耗时
+              const endTime = new Date().getTime();
+              const duration = endTime - startTime;
+              this.logger.log(
+                `[${requestId}] Temperature indicator request completed in ${duration}ms`,
+              );
+
+              // 清理资源并返回结果
+              this.cleanupChart(chartId);
+              
+              // 关闭自定义客户端
+              customClient.end().catch((error: any) => {
+                this.logger.error(
+                  `[${requestId}] Error closing custom client: ${error.message}`,
+                );
+              });
+
+              resolve({
+                symbol: formattedSymbol,
+                timeframe: tvInterval,
+                indicator: indicatorName,
+                periods,
+                count: periods.length,
+                lastUpdated: new Date().toISOString(),
+              });
+            } catch (error) {
+              this.logger.error(
+                `[${requestId}] Error processing indicator data: ${error.message}`,
+                error.stack,
+              );
+              this.cleanupChart(chartId);
+              reject(error);
+            }
+          });
+        } catch (error) {
+          this.logger.error(
+            `[${requestId}] Error setting up indicator: ${error.message}`,
+            error.stack,
+          );
+          this.cleanupChart(chartId);
+          reject(error);
+        }
+      });
+
+      // 超时处理Promise
+      const timeoutPromise = new Promise((_, reject) => {
+        const timeoutId = setTimeout(() => {
+          this.logger.error(
+            `[${requestId}] Temperature indicator request timed out after ${this.CHART_TIMEOUT_MS}ms`,
+          );
+          this.timeoutCounter++;
+          this.logger.warn(
+            `Timeout counter increased to ${this.timeoutCounter}`,
+          );
+
+          this.cleanupChart(chartId);
+          reject(
+            new Error(
+              `Temperature indicator request for ${formattedSymbol} timed out after ${this.CHART_TIMEOUT_MS}ms`,
+            ),
+          );
+        }, this.CHART_TIMEOUT_MS);
+
+        // 保存timeout引用
+        const chartData = this.charts.get(chartId);
+        if (chartData) {
+          chartData.timeoutRef = timeoutId;
+        }
+      });
+
+      // 使用Promise.race竞争数据获取和超时
+      return await Promise.race([indicatorPromise, timeoutPromise]);
+    } catch (error) {
+      this.logger.error(
+        `[${requestId}] Error fetching temperature indicator for ${symbolId}: ${error.message}`,
         error.stack,
       );
       throw error;
