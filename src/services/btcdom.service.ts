@@ -99,6 +99,8 @@ export class BtcDomService {
           session,
           signature,
           indicatorName,
+          startDate,
+          endDate,
         );
 
       if (!temperatureData || !temperatureData.periods) {
@@ -111,9 +113,8 @@ export class BtcDomService {
 
       // Filter periods within date range and above threshold
       const filteredPeriods = periods.filter((period: any) => {
-        const periodTimestamp = period.time * 1000; // Convert to milliseconds
-        const periodValue = period.MOScore;
-
+        const periodTimestamp = period["$time"] * 1000; // Convert to milliseconds
+        const periodValue = period["MOScore"];
         return (
           periodTimestamp >= startTimestamp &&
           periodTimestamp <= endTimestamp &&
@@ -153,13 +154,13 @@ export class BtcDomService {
     if (periods.length === 0) return [];
 
     // Sort periods by time
-    periods.sort((a, b) => a.time - b.time);
+    periods.sort((a, b) => a["$time"] - b["$time"]);
 
     const groupedPeriods = [];
     let currentGroup = {
-      start: new Date(periods[0].time * 1000).toISOString(),
-      end: new Date(periods[0].time * 1000).toISOString(),
-      maxValue: periods[0].value,
+      start: new Date(periods[0]["$time"] * 1000).toISOString(),
+      end: new Date(periods[0]["$time"] * 1000).toISOString(),
+      maxValue: periods[0]["MOScore"],
     };
 
     for (let i = 1; i < periods.length; i++) {
@@ -167,23 +168,26 @@ export class BtcDomService {
       const previous = periods[i - 1];
 
       // Check if current period is consecutive (next day)
-      const currentDate = new Date(current.time * 1000);
-      const previousDate = new Date(previous.time * 1000);
+      const currentDate = new Date(current["$time"] * 1000);
+      const previousDate = new Date(previous["$time"] * 1000);
       const daysDiff =
         Math.abs(currentDate.getTime() - previousDate.getTime()) /
         (1000 * 60 * 60 * 24);
 
       if (daysDiff <= 1) {
         // Consecutive period, extend current group
-        currentGroup.end = new Date(current.time * 1000).toISOString();
-        currentGroup.maxValue = Math.max(currentGroup.maxValue, current.value);
+        currentGroup.end = new Date(current["$time"] * 1000).toISOString();
+        currentGroup.maxValue = Math.max(
+          currentGroup.maxValue,
+          current["MOScore"],
+        );
       } else {
         // Non-consecutive period, start new group
         groupedPeriods.push(currentGroup);
         currentGroup = {
-          start: new Date(current.time * 1000).toISOString(),
-          end: new Date(current.time * 1000).toISOString(),
-          maxValue: current.value,
+          start: new Date(current["$time"] * 1000).toISOString(),
+          end: new Date(current["$time"] * 1000).toISOString(),
+          maxValue: current["MOScore"],
         };
       }
     }

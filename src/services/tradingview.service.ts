@@ -353,11 +353,13 @@ export class TradingViewService implements OnModuleDestroy {
     session: string,
     signature: string,
     indicatorName: string,
+    startDate?: string,
+    endDate?: string,
   ): Promise<any> {
     this.requestCounter++;
     const requestId = `TEMP_${this.requestCounter}_${Date.now()}`;
     this.logger.log(
-      `[${requestId}] Temperature indicator request: ${symbolId}, ${timeframe}`,
+      `[${requestId}] Temperature indicator request: ${symbolId}, ${timeframe}, dates: ${startDate || "N/A"} to ${endDate || "N/A"}`,
     );
 
     // 检查是否需要重置客户端
@@ -380,6 +382,13 @@ export class TradingViewService implements OnModuleDestroy {
       const formattedSymbol = this.formatSymbol(symbolId);
       const tvInterval = this.mapToTVInterval(timeframe);
 
+      this.logger.debug(
+        `[${requestId}] Symbol formatting: ${symbolId} -> ${formattedSymbol}`,
+      );
+      this.logger.debug(
+        `[${requestId}] Timeframe mapping: ${timeframe} -> ${tvInterval}`,
+      );
+
       // Create a unique chart ID for this request
       const chartId = `temp_${formattedSymbol}_${tvInterval}_${Math.random().toString(36).slice(2)}`;
       this.logger.debug(`[${requestId}] Created chart ID: ${chartId}`);
@@ -395,7 +404,7 @@ export class TradingViewService implements OnModuleDestroy {
       const customClient = new TradingView.Client({
         token: session,
         signature,
-        location: "https://cn.tradingview.com/"
+        location: "https://cn.tradingview.com/",
       });
 
       const chart = new customClient.Session.Chart();
@@ -430,18 +439,67 @@ export class TradingViewService implements OnModuleDestroy {
             );
           });
 
-          // 设置市场
-          chart.setMarket(formattedSymbol, {
+          // 计算时间范围参数
+          const marketOptions: any = {
             timeframe: tvInterval,
-            range: 2,
             adjustment: "dividends",
-          });
+          };
+
+          if (endDate) {
+            // 将结束日期转换为Unix时间戳（秒）
+            const endTimestamp = Math.floor(new Date(endDate).getTime() / 1000);
+            marketOptions.to = endTimestamp;
+
+            if (startDate) {
+              // 计算开始和结束日期之间的天数差异
+              const startTimestamp = Math.floor(
+                new Date(startDate).getTime() / 1000,
+              );
+              const daysDiff = Math.ceil(
+                (endTimestamp - startTimestamp) / (24 * 60 * 60),
+              );
+
+              // 根据时间框架调整range值
+              let periodsNeeded = daysDiff;
+              if (tvInterval === "1D") {
+                periodsNeeded = daysDiff;
+              } else if (tvInterval === "1W") {
+                periodsNeeded = Math.ceil(daysDiff / 7);
+              } else if (tvInterval === "1M") {
+                periodsNeeded = Math.ceil(daysDiff / 30);
+              }
+
+              // 设置为正数表示获取to时间点之前的数据
+              marketOptions.range = Math.max(periodsNeeded, 100); // 至少获取100个周期
+            } else {
+              // 如果只有结束日期，获取足够的历史数据
+              marketOptions.range = 1000; // 获取1000个周期的历史数据
+            }
+          } else {
+            // 如果没有指定日期范围，使用默认值获取更多历史数据
+            marketOptions.range = 1000; // 获取1000个周期而不是仅仅2个
+          }
+
+          this.logger.debug(
+            `[${requestId}] Setting market with options: ${JSON.stringify(marketOptions)}`,
+          );
+
+          // 设置市场
+          chart.setMarket(formattedSymbol, marketOptions);
+
+          this.logger.debug(
+            `[${requestId}] Market set successfully for symbol: ${formattedSymbol}`,
+          );
 
           this.logger.debug(
             `[${requestId}] Loading temperature indicator: ${indicatorName}`,
           );
 
           // 获取指标
+          this.logger.debug(
+            `[${requestId}] Fetching indicator with name: ${indicatorName}`,
+          );
+          
           const tempIndicator = await TradingView.getIndicator(
             indicatorName,
             "last",
@@ -450,6 +508,9 @@ export class TradingViewService implements OnModuleDestroy {
           );
 
           if (!tempIndicator) {
+            this.logger.error(
+              `[${requestId}] Temperature indicator ${indicatorName} not found or failed to load`,
+            );
             // 使用统一的资源清理方法
             this.cleanupTemperatureResources(customClient, chartId, requestId);
             reject(
@@ -457,6 +518,10 @@ export class TradingViewService implements OnModuleDestroy {
             );
             return;
           }
+
+          this.logger.debug(
+            `[${requestId}] Indicator loaded successfully: ${tempIndicator.description || 'No description'}`,
+          );
 
           const liveIndicator = new chart.Study(tempIndicator);
 
@@ -473,6 +538,16 @@ export class TradingViewService implements OnModuleDestroy {
                 `[${requestId}] Received ${periods.length} indicator periods for ${formattedSymbol}`,
               );
 
+              if (periods.length > 0) {
+                this.logger.debug(
+                  `[${requestId}] Sample period data: ${JSON.stringify(periods.slice(0, 3))}`,
+                );
+              } else {
+                this.logger.warn(
+                  `[${requestId}] No periods received - possible issues: invalid symbol, no data for timeframe, or indicator not working`,
+                );
+              }
+
               // 计算请求耗时
               const endTime = new Date().getTime();
               const duration = endTime - startTime;
@@ -481,7 +556,11 @@ export class TradingViewService implements OnModuleDestroy {
               );
 
               // 使用统一的资源清理方法
-              this.cleanupTemperatureResources(customClient, chartId, requestId);
+              this.cleanupTemperatureResources(
+                customClient,
+                chartId,
+                requestId,
+              );
 
               resolve({
                 symbol: formattedSymbol,
@@ -497,7 +576,11 @@ export class TradingViewService implements OnModuleDestroy {
                 error.stack,
               );
               // 使用统一的资源清理方法
-              this.cleanupTemperatureResources(customClient, chartId, requestId);
+              this.cleanupTemperatureResources(
+                customClient,
+                chartId,
+                requestId,
+              );
               reject(error);
             }
           });
