@@ -36,7 +36,7 @@ export class BtcDomController {
    * Get temperature indicator periods above threshold
    * @param symbol Symbol to fetch data for (default: OTHERS)
    * @param timeframe Timeframe for data (default: 1D)
-   * @param startDate Start date in ISO format (default: 2000-01-01T00:00:00.000Z)
+   * @param startDate Start date in ISO format (default: 2020-01-01T00:00:00.000Z)
    * @param endDate End date in ISO format (default: current date)
    * @param threshold Temperature threshold value (default: 60)
    * @returns Filtered time periods above threshold

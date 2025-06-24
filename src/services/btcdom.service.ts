@@ -61,7 +61,7 @@ export class BtcDomService {
    * Get temperature indicator periods above threshold
    * @param symbol Symbol to fetch data for (default: OTHERS)
    * @param timeframe Timeframe for data (default: 1D)
-   * @param startDate Start date in ISO format (default: 2000-01-01)
+   * @param startDate Start date in ISO format (default: 2020-01-01)
    * @param endDate End date in ISO format (default: current date)
    * @param threshold Temperature threshold value (default: 60)
    * @returns Filtered time periods above threshold
@@ -69,7 +69,7 @@ export class BtcDomService {
   async getTemperaturePeriods(
     symbol: string = "OTHERS",
     timeframe: string = "1D",
-    startDate: string = "2000-01-01T00:00:00.000Z",
+    startDate: string = "2020-01-01T00:00:00.000Z",
     endDate: string = new Date().toISOString(),
     threshold: number = 60,
   ) {
@@ -124,7 +124,6 @@ export class BtcDomService {
 
       // Group consecutive periods
       const groupedPeriods = this.groupConsecutivePeriods(filteredPeriods);
-
       return {
         success: true,
         data: {

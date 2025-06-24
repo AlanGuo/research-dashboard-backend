@@ -499,7 +499,7 @@ export class TradingViewService implements OnModuleDestroy {
           this.logger.debug(
             `[${requestId}] Fetching indicator with name: ${indicatorName}`,
           );
-          
+
           const tempIndicator = await TradingView.getIndicator(
             indicatorName,
             "last",
@@ -520,7 +520,7 @@ export class TradingViewService implements OnModuleDestroy {
           }
 
           this.logger.debug(
-            `[${requestId}] Indicator loaded successfully: ${tempIndicator.description || 'No description'}`,
+            `[${requestId}] Indicator loaded successfully: ${tempIndicator.description || "No description"}`,
           );
 
           const liveIndicator = new chart.Study(tempIndicator);
