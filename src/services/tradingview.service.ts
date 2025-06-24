@@ -421,7 +421,8 @@ export class TradingViewService implements OnModuleDestroy {
             this.logger.error(
               `[${requestId}] Chart error for ${formattedSymbol}: ${err.join(" ")}`,
             );
-            this.cleanupChart(chartId);
+            // 使用统一的资源清理方法
+            this.cleanupTemperatureResources(customClient, chartId, requestId);
             reject(
               new Error(
                 `Failed to fetch temperature indicator for ${formattedSymbol}: ${err.join(" ")}`,
@@ -449,7 +450,8 @@ export class TradingViewService implements OnModuleDestroy {
           );
 
           if (!tempIndicator) {
-            this.cleanupChart(chartId);
+            // 使用统一的资源清理方法
+            this.cleanupTemperatureResources(customClient, chartId, requestId);
             reject(
               new Error(`Temperature indicator ${indicatorName} not found`),
             );
@@ -478,15 +480,8 @@ export class TradingViewService implements OnModuleDestroy {
                 `[${requestId}] Temperature indicator request completed in ${duration}ms`,
               );
 
-              // 清理资源并返回结果
-              this.cleanupChart(chartId);
-
-              // 关闭自定义客户端
-              customClient.end().catch((error: any) => {
-                this.logger.error(
-                  `[${requestId}] Error closing custom client: ${error.message}`,
-                );
-              });
+              // 使用统一的资源清理方法
+              this.cleanupTemperatureResources(customClient, chartId, requestId);
 
               resolve({
                 symbol: formattedSymbol,
@@ -501,7 +496,8 @@ export class TradingViewService implements OnModuleDestroy {
                 `[${requestId}] Error processing indicator data: ${error.message}`,
                 error.stack,
               );
-              this.cleanupChart(chartId);
+              // 使用统一的资源清理方法
+              this.cleanupTemperatureResources(customClient, chartId, requestId);
               reject(error);
             }
           });
@@ -510,7 +506,8 @@ export class TradingViewService implements OnModuleDestroy {
             `[${requestId}] Error setting up indicator: ${error.message}`,
             error.stack,
           );
-          this.cleanupChart(chartId);
+          // 使用统一的资源清理方法
+          this.cleanupTemperatureResources(customClient, chartId, requestId);
           reject(error);
         }
       });
@@ -526,7 +523,8 @@ export class TradingViewService implements OnModuleDestroy {
             `Timeout counter increased to ${this.timeoutCounter}`,
           );
 
-          this.cleanupChart(chartId);
+          // 使用统一的资源清理方法
+          this.cleanupTemperatureResources(customClient, chartId, requestId);
           reject(
             new Error(
               `Temperature indicator request for ${formattedSymbol} timed out after ${this.CHART_TIMEOUT_MS}ms`,
@@ -636,6 +634,34 @@ export class TradingViewService implements OnModuleDestroy {
       },
       lastUpdated: new Date().toISOString(),
     };
+  }
+
+  /**
+   * 清理温度指标请求的资源（包括自定义客户端和图表）
+   * @param customClient 自定义客户端
+   * @param chartId 图表ID
+   * @param requestId 请求ID
+   */
+  private cleanupTemperatureResources(
+    customClient: any,
+    chartId: string,
+    requestId: string,
+  ): void {
+    // 异步清理资源，不阻塞当前流程
+    (async () => {
+      try {
+        // 先关闭自定义客户端
+        await customClient.end();
+        this.logger.debug(`[${requestId}] Custom client closed successfully`);
+      } catch (error) {
+        this.logger.error(
+          `[${requestId}] Error closing custom client: ${error.message}`,
+        );
+      } finally {
+        // 无论客户端是否成功关闭，都要清理图表资源
+        this.cleanupChart(chartId);
+      }
+    })();
   }
 
   /**

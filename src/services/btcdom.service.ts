@@ -112,7 +112,7 @@ export class BtcDomService {
       // Filter periods within date range and above threshold
       const filteredPeriods = periods.filter((period: any) => {
         const periodTimestamp = period.time * 1000; // Convert to milliseconds
-        const periodValue = period.value;
+        const periodValue = period.MOScore;
 
         return (
           periodTimestamp >= startTimestamp &&
