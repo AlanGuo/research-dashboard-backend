@@ -1,7 +1,6 @@
 import { Injectable, OnModuleDestroy, Logger } from "@nestjs/common";
 // 使用路径映射导入 JavaScript 模块
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const TradingViewLib = require("@lib/tradingview_api/main");
+import * as TradingViewLib from "@lib/tradingview_api/main";
 const { TradingView } = TradingViewLib;
 
 @Injectable()
@@ -71,7 +70,6 @@ export class TradingViewService implements OnModuleDestroy {
       );
     }
   }
-  
 
   /**
    * 检查客户端健康状态
@@ -381,7 +379,7 @@ export class TradingViewService implements OnModuleDestroy {
     try {
       const formattedSymbol = this.formatSymbol(symbolId);
       const tvInterval = this.mapToTVInterval(timeframe);
-      
+
       // Create a unique chart ID for this request
       const chartId = `temp_${formattedSymbol}_${tvInterval}_${Math.random().toString(36).slice(2)}`;
       this.logger.debug(`[${requestId}] Created chart ID: ${chartId}`);
@@ -396,7 +394,8 @@ export class TradingViewService implements OnModuleDestroy {
       // Create a new client with custom session and signature
       const customClient = new TradingView.Client({
         token: session,
-        signature
+        signature,
+        location: "https://cn.tradingview.com/"
       });
 
       const chart = new customClient.Session.Chart();
@@ -451,7 +450,9 @@ export class TradingViewService implements OnModuleDestroy {
 
           if (!tempIndicator) {
             this.cleanupChart(chartId);
-            reject(new Error(`Temperature indicator ${indicatorName} not found`));
+            reject(
+              new Error(`Temperature indicator ${indicatorName} not found`),
+            );
             return;
           }
 
@@ -479,7 +480,7 @@ export class TradingViewService implements OnModuleDestroy {
 
               // 清理资源并返回结果
               this.cleanupChart(chartId);
-              
+
               // 关闭自定义客户端
               customClient.end().catch((error: any) => {
                 this.logger.error(

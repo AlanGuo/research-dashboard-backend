@@ -9,6 +9,7 @@ import { BenchmarkModule } from "./modules/benchmark.module";
 import { AssetTrendModule } from "./modules/asset-trend.module";
 import { HowellLiquidityModule } from "./modules/howell-liquidity.module";
 import { BtcDomModule } from "./modules/btcdom.module";
+import { RedisModule } from "./modules/redis.module";
 import { BinanceVolumeBacktestModule } from "./modules/binance-volume-backtest.module";
 import { MongooseModule } from "@nestjs/mongoose";
 
@@ -30,8 +31,9 @@ import { MongooseModule } from "@nestjs/mongoose";
     BenchmarkModule,
     AssetTrendModule,
     HowellLiquidityModule,
-    BinanceVolumeBacktestModule,
     BtcDomModule,
+    RedisModule,
+    BinanceVolumeBacktestModule,
   ],
   controllers: [AppController],
   providers: [AppService],

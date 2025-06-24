@@ -1,6 +1,8 @@
 import { Injectable } from "@nestjs/common";
 import { ConfigService } from "../config";
 import { Client } from "@notionhq/client";
+import { TradingViewService } from "./tradingview.service";
+import { RedisService } from "./redis.service";
 
 type SortDirection = "ascending" | "descending";
 
@@ -9,7 +11,11 @@ export class BtcDomService {
   private readonly notionClient: Client;
   private readonly databaseId: string;
 
-  constructor(private configService: ConfigService) {
+  constructor(
+    private configService: ConfigService,
+    private tradingViewService: TradingViewService,
+    private redisService: RedisService,
+  ) {
     this.notionClient = new Client({
       auth: this.configService.get<string>("notion.api_key"),
     });
@@ -49,6 +55,143 @@ export class BtcDomService {
       console.error("Error fetching BTC Dominance data:", error);
       throw new Error(`Failed to fetch BTC Dominance data: ${error.message}`);
     }
+  }
+
+  /**
+   * Get temperature indicator periods above threshold
+   * @param symbol Symbol to fetch data for (default: OTHERS)
+   * @param timeframe Timeframe for data (default: 1D)
+   * @param startDate Start date in ISO format (default: 2000-01-01)
+   * @param endDate End date in ISO format (default: current date)
+   * @param threshold Temperature threshold value (default: 60)
+   * @returns Filtered time periods above threshold
+   */
+  async getTemperaturePeriods(
+    symbol: string = "OTHERS",
+    timeframe: string = "1D",
+    startDate: string = "2000-01-01T00:00:00.000Z",
+    endDate: string = new Date().toISOString(),
+    threshold: number = 60,
+  ) {
+    try {
+      // Get TradingView session and signature from Redis
+      const cookie = await this.redisService.get("cookie");
+      if (!cookie) {
+        throw new Error("TradingView cookie not found in Redis");
+      }
+
+      const { session, signature } =
+        this.redisService.parseTradingViewCookie(cookie);
+
+      // Get indicator name from config
+      const indicatorName = this.configService.get<string>(
+        "tradingview.indicator.temperature",
+      );
+      if (!indicatorName) {
+        throw new Error("TradingView indicator name not configured");
+      }
+
+      // Get temperature indicator data for specified symbol
+      const temperatureData =
+        await this.tradingViewService.getTemperatureIndicator(
+          symbol,
+          timeframe,
+          session,
+          signature,
+          indicatorName,
+        );
+
+      if (!temperatureData || !temperatureData.periods) {
+        throw new Error("No temperature data received");
+      }
+
+      const periods = temperatureData.periods;
+      const startTimestamp = new Date(startDate).getTime();
+      const endTimestamp = new Date(endDate).getTime();
+
+      // Filter periods within date range and above threshold
+      const filteredPeriods = periods.filter((period: any) => {
+        const periodTimestamp = period.time * 1000; // Convert to milliseconds
+        const periodValue = period.value;
+
+        return (
+          periodTimestamp >= startTimestamp &&
+          periodTimestamp <= endTimestamp &&
+          periodValue > threshold
+        );
+      });
+
+      // Group consecutive periods
+      const groupedPeriods = this.groupConsecutivePeriods(filteredPeriods);
+
+      return {
+        success: true,
+        data: {
+          symbol,
+          timeframe,
+          periods: groupedPeriods,
+          totalPeriods: groupedPeriods.length,
+          threshold,
+          dateRange: {
+            start: startDate,
+            end: endDate,
+          },
+        },
+      };
+    } catch (error) {
+      console.error("Error fetching temperature periods:", error);
+      throw new Error(`Failed to fetch temperature periods: ${error.message}`);
+    }
+  }
+
+  /**
+   * Group consecutive periods into time ranges
+   * @param periods Array of filtered periods
+   * @returns Array of grouped time periods
+   */
+  private groupConsecutivePeriods(periods: any[]) {
+    if (periods.length === 0) return [];
+
+    // Sort periods by time
+    periods.sort((a, b) => a.time - b.time);
+
+    const groupedPeriods = [];
+    let currentGroup = {
+      start: new Date(periods[0].time * 1000).toISOString(),
+      end: new Date(periods[0].time * 1000).toISOString(),
+      maxValue: periods[0].value,
+    };
+
+    for (let i = 1; i < periods.length; i++) {
+      const current = periods[i];
+      const previous = periods[i - 1];
+
+      // Check if current period is consecutive (next day)
+      const currentDate = new Date(current.time * 1000);
+      const previousDate = new Date(previous.time * 1000);
+      const daysDiff =
+        Math.abs(currentDate.getTime() - previousDate.getTime()) /
+        (1000 * 60 * 60 * 24);
+
+      if (daysDiff <= 1) {
+        // Consecutive period, extend current group
+        currentGroup.end = new Date(current.time * 1000).toISOString();
+        currentGroup.maxValue = Math.max(currentGroup.maxValue, current.value);
+      } else {
+        // Non-consecutive period, start new group
+        groupedPeriods.push(currentGroup);
+        currentGroup = {
+          start: new Date(current.time * 1000).toISOString(),
+          end: new Date(current.time * 1000).toISOString(),
+          maxValue: current.value,
+        };
+      }
+    }
+
+    // Add the last group
+    groupedPeriods.push(currentGroup);
+
+    return groupedPeriods;
   }
 
   /**

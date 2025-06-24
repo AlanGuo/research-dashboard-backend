@@ -1828,13 +1828,6 @@ export class BinanceVolumeBacktestService {
   }
 
   /**
-   * 测试Binance API连通性
-   */
-  async testBinanceApi() {
-    return this.binanceService.testConnectivity();
-  }
-
-  /**
    * 测试期货API连通性
    */
   async testFuturesApi(): Promise<any> {

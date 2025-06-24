@@ -229,7 +229,7 @@ module.exports = class Client {
   constructor(clientOptions = {}) {
     if (clientOptions.DEBUG) global.TW_DEBUG = clientOptions.DEBUG;
 
-    const server = clientOptions.server || 'data';
+    const server = clientOptions.server || 'prodata';
     let agent
     if (proxy) {
       // 使用代理服务器

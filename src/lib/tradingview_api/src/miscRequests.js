@@ -1,6 +1,6 @@
 const os = require('os');
 const axios = require('axios');
-
+const { HttpsProxyAgent } = require('https-proxy-agent');
 const PineIndicator = require('./classes/PineIndicator');
 
 const validateStatus = (status) => status < 500;
@@ -275,10 +275,14 @@ module.exports = {
    */
   async getIndicator(id, version = 'last', session, signature) {
     const indicID = id.replace(/ |%/g, '%25');
+    const proxyUrl = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || "";
+    const httpsProxyAgent = proxyUrl ? new HttpsProxyAgent(proxyUrl, { rejectUnauthorized: false }) : undefined;
     const { data } = await axios.get(
       `https://pine-facade.tradingview.com/pine-facade/translate/${indicID}/${version}`,
       { 
         validateStatus,
+        httpsAgent: httpsProxyAgent ? httpsProxyAgent : undefined,
+        proxy: httpsProxyAgent ? false : undefined,
         headers: {
           cookie: `sessionid=${session}${signature ? `;sessionid_sign=${signature};` : ''}`,
         },
@@ -427,8 +431,12 @@ module.exports = {
    * @returns {Promise<User>} Token
    */
   async getUser(session, signature = '', location = 'https://www.tradingview.com/') {
+    const proxyUrl = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || "";
+    const httpsProxyAgent = proxyUrl ? new HttpsProxyAgent(proxyUrl, { rejectUnauthorized: false }) : undefined;
     const { data } = await axios.get(location, {
       validateStatus,
+      httpsAgent: httpsProxyAgent ? httpsProxyAgent : undefined,
+      proxy: httpsProxyAgent ? false : undefined,
       headers: {
         cookie: `sessionid=${session}${signature ? `;sessionid_sign=${signature};` : ''}`,
       },
