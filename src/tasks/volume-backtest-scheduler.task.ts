@@ -18,7 +18,7 @@ export class VolumeBacktestSchedulerTask {
    * 定时任务：每天UTC时间 00:00:10, 08:00:10, 16:00:10 执行异步回测
    */
   // @Timeout(1000) // 初始延迟1秒执行
-  @Cron('10 0,8,16 * * *', { timeZone: 'UTC' })
+  @Cron('10 0 0,8,16 * * *', { timeZone: 'UTC' })
   async executeScheduledBacktest() {
     this.logger.log('开始执行定时回测任务');
 
