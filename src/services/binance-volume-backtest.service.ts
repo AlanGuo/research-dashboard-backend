@@ -3504,4 +3504,130 @@ export class BinanceVolumeBacktestService {
 
     return fundingRateMap;
   }
+
+  /**
+   * 启动异步补充currentFundingRate任务
+   */
+  startAsyncBackfillCurrentFundingRate(
+    startTime?: Date,
+    endTime?: Date,
+    batchSize: number = 50,
+  ): string {
+    const taskId = `backfill-funding-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    this.logger.log(`启动异步补充currentFundingRate任务: ${taskId}`);
+
+    // 在后台执行任务，不阻塞当前请求
+    setImmediate(async () => {
+      try {
+        await this.executeAsyncBackfillCurrentFundingRate(
+          taskId,
+          startTime,
+          endTime,
+          batchSize,
+        );
+      } catch (error) {
+        this.logger.error(`异步补充任务 ${taskId} 执行失败:`, error);
+      }
+    });
+
+    return taskId;
+  }
+
+  /**
+   * 执行异步补充currentFundingRate任务
+   */
+  private async executeAsyncBackfillCurrentFundingRate(
+    taskId: string,
+    startTime?: Date,
+    endTime?: Date,
+    batchSize: number = 50,
+  ): Promise<void> {
+    const startExecutionTime = Date.now();
+    this.logger.log(`开始执行异步补充任务 ${taskId}`);
+
+    try {
+      // 构建查询条件
+      const query: any = {};
+      if (startTime && endTime) {
+        query.timestamp = { $gte: startTime, $lte: endTime };
+      } else if (startTime) {
+        query.timestamp = { $gte: startTime };
+      } else if (endTime) {
+        query.timestamp = { $lte: endTime };
+      }
+
+      // 计算总记录数
+      const totalRecords = await this.volumeBacktestModel.countDocuments(query);
+      this.logger.log(`任务 ${taskId}: 找到 ${totalRecords} 条记录需要处理`);
+
+      if (totalRecords === 0) {
+        this.logger.log(`任务 ${taskId}: 没有找到需要处理的记录`);
+        return;
+      }
+
+      let processed = 0;
+      let updated = 0;
+      let batchCount = 0;
+      const totalBatches = Math.ceil(totalRecords / batchSize);
+
+      // 分批处理
+      while (processed < totalRecords) {
+        batchCount++;
+        
+        const records = await this.volumeBacktestModel
+          .find(query)
+          .sort({ timestamp: 1 })
+          .skip(processed)
+          .limit(batchSize)
+          .exec();
+
+        if (records.length === 0) {
+          break;
+        }
+
+        this.logger.log(`任务 ${taskId}: 处理第 ${batchCount}/${totalBatches} 批 (${records.length} 条记录)`);
+
+        for (const record of records) {
+          try {
+            // 为每个ranking项补充currentFundingRate
+            const updatedRankings = await this.addCurrentFundingRateToRankings(
+              record.rankings,
+              record.timestamp,
+            );
+
+            // 更新数据库记录
+            await this.volumeBacktestModel.findByIdAndUpdate(
+              record._id,
+              { rankings: updatedRankings },
+              { new: true },
+            );
+
+            updated++;
+
+          } catch (error) {
+            this.logger.error(`任务 ${taskId}: 处理记录失败 (${record.timestamp.toISOString()}):`, error);
+          }
+
+          processed++;
+        }
+
+        // 批次间添加短暂延迟，避免过度占用资源
+        await this.delay(500);
+
+        // 定期报告进度
+        const progressPercent = Math.round((processed / totalRecords) * 100);
+        this.logger.log(`任务 ${taskId}: 进度 ${processed}/${totalRecords} (${progressPercent}%, 已更新: ${updated})`);
+      }
+
+      const executionTime = Date.now() - startExecutionTime;
+      const message = `任务 ${taskId} 完成: 处理 ${processed} 条记录, 成功更新 ${updated} 条, 耗时 ${Math.round(executionTime / 1000)}秒`;
+      this.logger.log(message);
+
+    } catch (error) {
+      const executionTime = Date.now() - startExecutionTime;
+      this.logger.error(`任务 ${taskId} 执行失败 (耗时 ${Math.round(executionTime / 1000)}秒):`, error);
+      throw error;
+    }
+  }
 }
