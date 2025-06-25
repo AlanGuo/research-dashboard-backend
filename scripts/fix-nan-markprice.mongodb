@@ -1,0 +1,87 @@
+// MongoDB Shell 脚本：修复 markPrice 中的 NaN 值
+// 使用方法：mongosh research-dashboard < fix-nan-markprice.mongodb
+
+// 切换到正确的数据库
+use('research-dashboard');
+
+// 检查当前 NaN markPrice 的数量
+print('📊 检查当前 NaN markPrice 数量...');
+const nanCount = db.volume_backtests.countDocuments({
+  "rankings.fundingRateHistory.markPrice": NaN
+});
+print(`发现 ${nanCount} 个文档包含 NaN markPrice`);
+
+if (nanCount === 0) {
+  print('✅ 没有发现 NaN markPrice，无需修复');
+} else {
+  print('🔧 开始修复 NaN markPrice...');
+  
+  // 使用聚合管道修复 NaN 值
+  const result = db.volume_backtests.updateMany(
+    {"rankings.fundingRateHistory.markPrice": NaN},
+    [
+      {
+        $set: {
+          rankings: {
+            $map: {
+              input: "$rankings",
+              as: "ranking",
+              in: {
+                $mergeObjects: [
+                  "$$ranking",
+                  {
+                    fundingRateHistory: {
+                      $map: {
+                        input: { $ifNull: ["$$ranking.fundingRateHistory", []] },
+                        as: "funding",
+                        in: {
+                          $mergeObjects: [
+                            "$$funding",
+                            {
+                              markPrice: {
+                                $cond: [
+                                  { $ne: ["$$funding.markPrice", "$$funding.markPrice"] }, // NaN 检查
+                                  null,
+                                  "$$funding.markPrice"
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    ]
+  );
+  
+  print(`✅ 修复完成:`);
+  print(`   - 匹配的文档: ${result.matchedCount}`);
+  print(`   - 修改的文档: ${result.modifiedCount}`);
+  
+  // 验证修复结果
+  const remainingNaN = db.volume_backtests.countDocuments({
+    "rankings.fundingRateHistory.markPrice": NaN
+  });
+  
+  const nullCount = db.volume_backtests.countDocuments({
+    "rankings.fundingRateHistory.markPrice": null
+  });
+  
+  print(`📊 修复后统计:`);
+  print(`   - 剩余 NaN markPrice: ${remainingNaN}`);
+  print(`   - null markPrice 数量: ${nullCount}`);
+  
+  if (remainingNaN === 0) {
+    print('🎉 所有 NaN markPrice 已成功修复为 null');
+  } else {
+    print('⚠️ 仍有部分 NaN markPrice 未修复');
+  }
+}
+
+print('✅ 脚本执行完成');

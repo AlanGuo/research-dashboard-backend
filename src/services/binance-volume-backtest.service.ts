@@ -1153,27 +1153,37 @@ export class BinanceVolumeBacktestService {
       );
 
       // 分离当前资金费率和历史资金费率数据
-      const currentFundingRateMap = new Map<string, number>();
+      const currentFundingRateMap = new Map<string, FundingRateHistoryItem[]>();
       const historyFundingRateMap = new Map<string, FundingRateHistoryItem[]>();
-      
+
       const currentTimeThreshold = currentTime + 10 * 60 * 1000; // 当前时间+10分钟作为分界线
 
       for (const [symbol, allRates] of allFundingRateMap) {
         // 分离当前和历史数据
-        const currentRates = allRates.filter(rate => 
-          new Date(rate.fundingTime).getTime() <= currentTimeThreshold
-        );
-        const historyRates = allRates.filter(rate => 
+        // currentFundingRate: 只包含 [timestamp, timestamp + 10分钟] 范围内的记录
+        const currentRates = allRates.filter(rate => {
+          const fundingTime = new Date(rate.fundingTime).getTime();
+          return fundingTime >= currentTime && fundingTime <= currentTimeThreshold;
+        });
+        // fundingRateHistory: 包含 timestamp + 10分钟 之后的记录
+        const historyRates = allRates.filter(rate =>
           new Date(rate.fundingTime).getTime() > currentTimeThreshold
         );
 
         // 存储历史数据
         historyFundingRateMap.set(symbol, historyRates);
 
-        // 存储当前资金费率（取最新的一个）
+        // 存储当前资金费率：只保留最近执行的一条记录
         if (currentRates.length > 0) {
+          // 取最新的一条记录（fundingTime最大的）
           const latestCurrentRate = currentRates[currentRates.length - 1];
-          currentFundingRateMap.set(symbol, latestCurrentRate.fundingRate);
+          const processedRate = {
+            ...latestCurrentRate,
+            markPrice: (latestCurrentRate.markPrice && isFinite(latestCurrentRate.markPrice) && latestCurrentRate.markPrice > 0)
+              ? latestCurrentRate.markPrice
+              : null
+          };
+          currentFundingRateMap.set(symbol, [processedRate]);
         }
       }
 
@@ -1181,7 +1191,7 @@ export class BinanceVolumeBacktestService {
       const rankingsWithHistory = result.rankings.map((item) => ({
         ...item,
         fundingRateHistory: historyFundingRateMap.get(item.symbol) || [],
-        currentFundingRate: currentFundingRateMap.get(item.symbol) || undefined,
+        currentFundingRate: currentFundingRateMap.get(item.symbol) || [],
       }));
 
       this.logger.debug(
@@ -1765,28 +1775,55 @@ export class BinanceVolumeBacktestService {
         return [];
       }
 
+      // 检查是否有数据
+      if (data.length === 0) {
+        this.logger.debug(
+          `📝 ${symbol} 在时间范围 ${new Date(startTime).toISOString()} 到 ${new Date(endTime).toISOString()} 没有资金费率数据`
+        );
+        return [];
+      }
+
       return data.map((item) => {
         let markPrice = null;
-        
-        // 优先使用API返回的markPrice
+        let markPriceStatus = 'missing'; // 'missing', 'invalid', 'valid'
+
+        // 检查是否有fundingRate
+        const hasFundingRate = item.fundingRate !== undefined && item.fundingRate !== null;
+        const fundingRateValue = hasFundingRate ? parseFloat(item.fundingRate.toString()) : null;
+        const isValidFundingRate = fundingRateValue !== null && !isNaN(fundingRateValue) && isFinite(fundingRateValue);
+
+        // 优先使用API返回的markPrice，增强NaN检查
         if (item.markPrice !== undefined && item.markPrice !== null) {
           const parsedMarkPrice = parseFloat(item.markPrice.toString());
-          if (!isNaN(parsedMarkPrice) && parsedMarkPrice > 0) {
+          // 增强检查：确保不是NaN、不是Infinity、且大于0
+          if (!isNaN(parsedMarkPrice) && isFinite(parsedMarkPrice) && parsedMarkPrice > 0) {
             markPrice = parsedMarkPrice;
+            markPriceStatus = 'valid';
+          } else {
+            markPriceStatus = 'invalid';
+            this.logger.warn(
+              `⚠️ ${symbol} 在 ${new Date(item.fundingTime).toISOString()} markPrice值无效: ${item.markPrice} -> ${parsedMarkPrice} (fundingRate: ${fundingRateValue})`
+            );
           }
         }
-        
-        // 如果markPrice无效，记录警告但仍保存数据
-        if (markPrice === null) {
-          this.logger.warn(
-            `⚠️ ${symbol} 在 ${new Date(item.fundingTime).toISOString()} 没有有效的markPrice，将影响盈亏计算准确性`
-          );
+
+        // 根据不同情况记录不同的警告
+        if (markPriceStatus === 'missing') {
+          if (isValidFundingRate) {
+            this.logger.warn(
+              `⚠️ ${symbol} 在 ${new Date(item.fundingTime).toISOString()} 有资金费率(${fundingRateValue})但缺少markPrice，将影响盈亏计算准确性`
+            );
+          } else {
+            this.logger.debug(
+              `📝 ${symbol} 在 ${new Date(item.fundingTime).toISOString()} 既没有资金费率也没有markPrice，可能是该时间点无交易数据`
+            );
+          }
         }
 
         return {
           fundingTime: new Date(item.fundingTime),
-          fundingRate: parseFloat(item.fundingRate.toString()),
-          markPrice: markPrice, // 可能为null
+          fundingRate: fundingRateValue || 0,
+          markPrice: markPrice, // 可能为null，但绝不会是NaN
         };
       });
     } catch (error) {
@@ -3458,15 +3495,24 @@ export class BinanceVolumeBacktestService {
         if (futureSymbol) {
           const currentFundingRates = fundingRateMap.get(futureSymbol);
           if (currentFundingRates && currentFundingRates.length > 0) {
-            // 取最新的一条资金费率记录
-            const latestFunding = currentFundingRates[currentFundingRates.length - 1];
+            // 只取最新的一条记录（应该已经在获取时过滤了）
+            const latestRate = currentFundingRates[currentFundingRates.length - 1];
+            const processedRate = {
+              ...latestRate,
+              markPrice: (latestRate.markPrice && isFinite(latestRate.markPrice) && latestRate.markPrice > 0)
+                ? latestRate.markPrice
+                : null
+            };
             return {
               ...ranking,
-              currentFundingRate: latestFunding.fundingRate,
+              currentFundingRate: [processedRate],
             };
           }
         }
-        return ranking;
+        return {
+          ...ranking,
+          currentFundingRate: [],
+        };
       });
 
       return updatedRankings;
@@ -3504,103 +3550,6 @@ export class BinanceVolumeBacktestService {
     });
 
     return taskId;
-  }
-
-  /**
-   * 执行异步补充currentFundingRate任务
-   */
-  private async executeAsyncBackfillCurrentFundingRate(
-    taskId: string,
-    startTime?: Date,
-    endTime?: Date,
-    batchSize: number = 50,
-  ): Promise<void> {
-    const startExecutionTime = Date.now();
-    this.logger.log(`开始执行异步补充任务 ${taskId}`);
-
-    try {
-      // 构建查询条件
-      const query: any = {};
-      if (startTime && endTime) {
-        query.timestamp = { $gte: startTime, $lte: endTime };
-      } else if (startTime) {
-        query.timestamp = { $gte: startTime };
-      } else if (endTime) {
-        query.timestamp = { $lte: endTime };
-      }
-
-      // 计算总记录数
-      const totalRecords = await this.volumeBacktestModel.countDocuments(query);
-      this.logger.log(`任务 ${taskId}: 找到 ${totalRecords} 条记录需要处理`);
-
-      if (totalRecords === 0) {
-        this.logger.log(`任务 ${taskId}: 没有找到需要处理的记录`);
-        return;
-      }
-
-      let processed = 0;
-      let updated = 0;
-      let batchCount = 0;
-      const totalBatches = Math.ceil(totalRecords / batchSize);
-
-      // 分批处理
-      while (processed < totalRecords) {
-        batchCount++;
-        
-        const records = await this.volumeBacktestModel
-          .find(query)
-          .sort({ timestamp: 1 })
-          .skip(processed)
-          .limit(batchSize)
-          .exec();
-
-        if (records.length === 0) {
-          break;
-        }
-
-        this.logger.log(`任务 ${taskId}: 处理第 ${batchCount}/${totalBatches} 批 (${records.length} 条记录)`);
-
-        for (const record of records) {
-          try {
-            // 为每个ranking项补充currentFundingRate
-            const updatedRankings = await this.addCurrentFundingRateToRankings(
-              record.rankings,
-              record.timestamp,
-            );
-
-            // 更新数据库记录
-            await this.volumeBacktestModel.findByIdAndUpdate(
-              record._id,
-              { rankings: updatedRankings },
-              { new: true },
-            );
-
-            updated++;
-
-          } catch (error) {
-            this.logger.error(`任务 ${taskId}: 处理记录失败 (${record.timestamp.toISOString()}):`, error);
-          }
-
-          processed++;
-        }
-
-        // 批次间添加短暂延迟，避免过度占用资源
-        await this.delay(500);
-
-        // 定期报告进度
-        const progressPercent = Math.round((processed / totalRecords) * 100);
-        this.logger.log(`任务 ${taskId}: 进度 ${processed}/${totalRecords} (${progressPercent}%, 已更新: ${updated})`);
-      }
-
-      const executionTime = Date.now() - startExecutionTime;
-      const message = `任务 ${taskId} 完成: 处理 ${processed} 条记录, 成功更新 ${updated} 条, 耗时 ${Math.round(executionTime / 1000)}秒`;
-      this.logger.log(message);
-
-    } catch (error) {
-      const executionTime = Date.now() - startExecutionTime;
-      this.logger.error(`任务 ${taskId} 执行失败 (耗时 ${Math.round(executionTime / 1000)}秒):`, error);
-      throw error;
-    }
   }
 
   /**
@@ -3892,10 +3841,19 @@ export class BinanceVolumeBacktestService {
       const currentTimeThreshold = currentTime + 10 * 60 * 1000; // 当前时间+10分钟
 
       for (const [symbol, allRates] of fundingRateMap) {
-        const currentRates = allRates.filter(rate =>
-          new Date(rate.fundingTime).getTime() <= currentTimeThreshold
-        );
-        timeWindowData.set(symbol, currentRates);
+        // currentFundingRate: 只包含 [timestamp, timestamp + 10分钟] 范围内的记录
+        const currentRates = allRates.filter(rate => {
+          const fundingTime = new Date(rate.fundingTime).getTime();
+          return fundingTime >= currentTime && fundingTime <= currentTimeThreshold;
+        });
+
+        // 只保留最新的一条记录
+        if (currentRates.length > 0) {
+          const latestRate = currentRates[currentRates.length - 1];
+          timeWindowData.set(symbol, [latestRate]);
+        } else {
+          timeWindowData.set(symbol, []);
+        }
       }
 
       fundingRateCache.set(timeWindowKey, timeWindowData);
@@ -3915,7 +3873,10 @@ export class BinanceVolumeBacktestService {
     timeWindowData?: Map<string, FundingRateHistoryItem[]>,
   ): any[] {
     if (!timeWindowData) {
-      return rankings;
+      return rankings.map(ranking => ({
+        ...ranking,
+        currentFundingRate: [],
+      }));
     }
 
     return rankings.map((ranking) => {
@@ -3923,15 +3884,24 @@ export class BinanceVolumeBacktestService {
       if (futureSymbol) {
         const currentFundingRates = timeWindowData.get(futureSymbol);
         if (currentFundingRates && currentFundingRates.length > 0) {
-          // 取最新的一条资金费率记录
-          const latestFunding = currentFundingRates[currentFundingRates.length - 1];
+          // 应该只有一条记录，处理markPrice，确保为null而不是NaN
+          const latestRate = currentFundingRates[0]; // 应该只有一条
+          const processedRate = {
+            ...latestRate,
+            markPrice: (latestRate.markPrice && isFinite(latestRate.markPrice) && latestRate.markPrice > 0)
+              ? latestRate.markPrice
+              : null
+          };
           return {
             ...ranking,
-            currentFundingRate: latestFunding.fundingRate,
+            currentFundingRate: [processedRate],
           };
         }
       }
-      return ranking;
+      return {
+        ...ranking,
+        currentFundingRate: [],
+      };
     });
   }
 
@@ -3944,13 +3914,29 @@ export class BinanceVolumeBacktestService {
       const updated = updatedRankings[i];
 
       // 检查是否添加了新的currentFundingRate字段
-      if (!original.currentFundingRate && updated.currentFundingRate !== undefined) {
+      if (!original.currentFundingRate && updated.currentFundingRate && updated.currentFundingRate.length > 0) {
         return true;
       }
 
-      // 检查currentFundingRate是否有变化
-      if (original.currentFundingRate !== updated.currentFundingRate) {
+      // 检查currentFundingRate数组长度是否有变化
+      const originalLength = original.currentFundingRate ? original.currentFundingRate.length : 0;
+      const updatedLength = updated.currentFundingRate ? updated.currentFundingRate.length : 0;
+
+      if (originalLength !== updatedLength) {
         return true;
+      }
+
+      // 如果都有数据，检查内容是否有变化（简单比较第一个和最后一个元素）
+      if (originalLength > 0 && updatedLength > 0) {
+        const originalFirst = original.currentFundingRate[0];
+        const updatedFirst = updated.currentFundingRate[0];
+        const originalLast = original.currentFundingRate[originalLength - 1];
+        const updatedLast = updated.currentFundingRate[updatedLength - 1];
+
+        if (originalFirst.fundingRate !== updatedFirst.fundingRate ||
+            originalLast.fundingRate !== updatedLast.fundingRate) {
+          return true;
+        }
       }
     }
 
