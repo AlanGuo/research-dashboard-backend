@@ -1,0 +1,52 @@
+# 简单的 MongoDB 更新命令
+
+# 连接到数据库
+use research-dashboard
+
+# 方案1：最简单的聚合管道更新（推荐）
+db.volume_backtests.updateMany(
+  {"rankings.fundingRateHistory.markPrice": NaN},
+  [
+    {
+      $set: {
+        rankings: {
+          $map: {
+            input: "$rankings",
+            as: "ranking",
+            in: {
+              $mergeObjects: [
+                "$$ranking",
+                {
+                  fundingRateHistory: {
+                    $map: {
+                      input: { $ifNull: ["$$ranking.fundingRateHistory", []] },
+                      as: "funding",
+                      in: {
+                        $mergeObjects: [
+                          "$$funding",
+                          {
+                            markPrice: {
+                              $cond: [
+                                { $eq: ["$$funding.markPrice", NaN] },
+                                null,
+                                "$$funding.markPrice"
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+)
+
+# 检查修复结果
+db.volume_backtests.countDocuments({"rankings.fundingRateHistory.markPrice": NaN})
+db.volume_backtests.countDocuments({"rankings.fundingRateHistory.markPrice": null})
