@@ -11,6 +11,7 @@ import { HowellLiquidityModule } from "./modules/howell-liquidity.module";
 import { BtcDomModule } from "./modules/btcdom.module";
 import { RedisModule } from "./modules/redis.module";
 import { BinanceVolumeBacktestModule } from "./modules/binance-volume-backtest.module";
+import { TasksModule } from "./modules/tasks.module";
 import { MongooseModule } from "@nestjs/mongoose";
 
 @Module({
@@ -34,6 +35,7 @@ import { MongooseModule } from "@nestjs/mongoose";
     BtcDomModule,
     RedisModule,
     BinanceVolumeBacktestModule,
+    TasksModule,
   ],
   controllers: [AppController],
   providers: [AppService],
