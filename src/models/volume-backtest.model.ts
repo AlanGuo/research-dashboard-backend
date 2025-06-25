@@ -46,7 +46,7 @@ export class VolumeBacktest {
 export interface FundingRateHistoryItem {
   fundingTime: Date;
   fundingRate: number;
-  markPrice: number;
+  markPrice: number | null; // 标记价格，可能为null（当API未返回时）
 }
 
 // 合并排行榜项接口 - 包含价格变化、成交量和波动率信息

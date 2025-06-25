@@ -49,13 +49,13 @@ interface FundingRateData {
   symbol: string;
   fundingTime: number;
   fundingRate: number;
-  markPrice: number;
+  markPrice: number | string | undefined; // 币安API可能返回字符串或undefined
 }
 
 interface FundingRateHistoryItem {
   fundingTime: Date;
   fundingRate: number;
-  markPrice: number;
+  markPrice: number | null; // 处理后的标记价格，可能为null
 }
 
 @Injectable()
@@ -1149,10 +1149,16 @@ export class BinanceVolumeBacktestService {
       );
 
       // 为rankings添加资金费率历史
-      const enrichedRankings = result.rankings.map((item) => ({
+      const rankingsWithHistory = result.rankings.map((item) => ({
         ...item,
         fundingRateHistory: fundingRateMap.get(item.symbol) || [],
       }));
+
+      // 为rankings添加当前资金费率（用于选股评分）
+      const enrichedRankings = await this.addCurrentFundingRateToRankings(
+        rankingsWithHistory,
+        result.timestamp,
+      );
 
       this.logger.debug(
         `✅ 资金费率历史添加完成: 成功获取 ${fundingRateMap.size}/${symbolsArray.length} 个交易对的数据`,
@@ -1732,11 +1738,30 @@ export class BinanceVolumeBacktestService {
         return [];
       }
 
-      return data.map((item) => ({
-        fundingTime: new Date(item.fundingTime),
-        fundingRate: parseFloat(item.fundingRate.toString()),
-        markPrice: parseFloat(item.markPrice.toString()),
-      }));
+      return data.map((item) => {
+        let markPrice = null;
+        
+        // 优先使用API返回的markPrice
+        if (item.markPrice !== undefined && item.markPrice !== null) {
+          const parsedMarkPrice = parseFloat(item.markPrice.toString());
+          if (!isNaN(parsedMarkPrice) && parsedMarkPrice > 0) {
+            markPrice = parsedMarkPrice;
+          }
+        }
+        
+        // 如果markPrice无效，记录警告但仍保存数据
+        if (markPrice === null) {
+          this.logger.warn(
+            `⚠️ ${symbol} 在 ${new Date(item.fundingTime).toISOString()} 没有有效的markPrice，将影响盈亏计算准确性`
+          );
+        }
+
+        return {
+          fundingTime: new Date(item.fundingTime),
+          fundingRate: parseFloat(item.fundingRate.toString()),
+          markPrice: markPrice, // 可能为null
+        };
+      });
     } catch (error) {
       this.logger.error(`❌ 获取资金费率历史失败: ${symbol}`, error);
       return [];
@@ -3471,11 +3496,30 @@ export class BinanceVolumeBacktestService {
               return { symbol, history: [] };
             }
 
-            const history = data.map((item) => ({
-              fundingTime: new Date(item.fundingTime),
-              fundingRate: parseFloat(item.fundingRate.toString()),
-              markPrice: parseFloat(item.markPrice.toString()),
-            }));
+            const history = data.map((item) => {
+              let markPrice = null;
+              
+              // 优先使用API返回的markPrice
+              if (item.markPrice !== undefined && item.markPrice !== null) {
+                const parsedMarkPrice = parseFloat(item.markPrice.toString());
+                if (!isNaN(parsedMarkPrice) && parsedMarkPrice > 0) {
+                  markPrice = parsedMarkPrice;
+                }
+              }
+              
+              // 如果markPrice无效，记录警告但仍保存数据
+              if (markPrice === null) {
+                this.logger.warn(
+                  `⚠️ ${symbol} 在 ${new Date(item.fundingTime).toISOString()} 没有有效的markPrice，将影响盈亏计算准确性`
+                );
+              }
+
+              return {
+                fundingTime: new Date(item.fundingTime),
+                fundingRate: parseFloat(item.fundingRate.toString()),
+                markPrice: markPrice, // 可能为null
+              };
+            });
 
             return { symbol, history };
 

@@ -113,7 +113,11 @@ export class BinanceVolumeBacktestController {
           btcPriceChange24h: result.btcPriceChange24h,
           btcdomPrice: result.btcdomPrice,
           btcdomPriceChange24h: result.btcdomPriceChange24h,
-          rankings: result.rankings,
+          rankings: result.rankings.map(ranking => ({
+            ...ranking,
+            // 确保 currentFundingRate 字段被包含在返回数据中
+            currentFundingRate: ranking.currentFundingRate || null,
+          })),
           removedSymbols: result.removedSymbols || [], // 从上一期排名中移除的交易对
           marketStats: {
             totalVolume: result.totalMarketVolume,
