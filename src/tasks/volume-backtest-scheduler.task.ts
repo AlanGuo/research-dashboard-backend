@@ -76,18 +76,15 @@ export class VolumeBacktestSchedulerTask {
    */
   private async calculateBacktestTimeRange(): Promise<{ startTime: Date; endTime: Date } | null> {
     try {
-      // 1. 获取最新的回测记录
-      const latestBacktestResults = await this.volumeBacktestService.getBacktestResults(
-        undefined, // startTime
-        undefined, // endTime
-      );
+      // 1. 获取最新的回测记录 - 优化查询，只获取一条最新记录
+      const latestBacktestResults = await this.volumeBacktestService.getLatestBacktestResult();
 
       // 2. 计算startTime
       let startTime: Date;
       
-      if (latestBacktestResults.length > 0) {
+      if (latestBacktestResults) {
         // 从最新记录的timestamp + 8小时开始
-        const latestTimestamp = latestBacktestResults[0].timestamp;
+        const latestTimestamp = latestBacktestResults.timestamp;
         startTime = new Date(latestTimestamp.getTime() + 8 * 60 * 60 * 1000);
       } else {
         // 如果没有历史数据，从2020-01-01开始

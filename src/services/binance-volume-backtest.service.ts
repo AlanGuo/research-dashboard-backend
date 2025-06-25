@@ -1434,7 +1434,7 @@ export class BinanceVolumeBacktestService {
       const symbolFilter = await this.getFilterFromCache(weeklyFilterHash);
 
       if (!symbolFilter || symbolFilter.valid.length === 0) {
-        this.logger.warn(`⚠️ 无法获取 ${weekKey} 周的交易对列表`);
+        this.logger.warn(`⚠️ ${weekKey} 周的交易对列表为空`);
         return [];
       }
 
@@ -2531,7 +2531,9 @@ export class BinanceVolumeBacktestService {
 
             // 找到最接近24小时前的K线数据
             let btc24hAgoKline = null;
-            let minTimeDiff = Infinity;
+            let minTimeDiff = Math.abs(
+              btcKlines[0].openTime - target24hAgoTime,
+            );
 
             for (const kline of btcKlines) {
               const timeDiff = Math.abs(kline.openTime - target24hAgoTime);
@@ -2609,7 +2611,9 @@ export class BinanceVolumeBacktestService {
 
             // 找到最接近24小时前的K线数据
             let btcdom24hAgoKline = null;
-            let minTimeDiff = Infinity;
+            let minTimeDiff = Math.abs(
+              btcdomKlines[0].openTime - target24hAgoTime,
+            );
 
             for (const kline of btcdomKlines) {
               const timeDiff = Math.abs(kline.openTime - target24hAgoTime);
@@ -3215,7 +3219,9 @@ export class BinanceVolumeBacktestService {
 
           // 找到最接近24小时前的K线数据
           let btcdom24hAgoKline = null;
-          let minTimeDiff = Infinity;
+          let minTimeDiff = Math.abs(
+            btcdomKlines[0].openTime - target24hAgoTime,
+          );
 
           for (const kline of btcdomKlines) {
             const timeDiff = Math.abs(kline.openTime - target24hAgoTime);
@@ -3250,5 +3256,15 @@ export class BinanceVolumeBacktestService {
     }
 
     return { btcdomPrice: 0, btcdomPriceChange24h: 0 };
+  }
+
+  /**
+   * 获取最新的回测记录 - 优化查询性能
+   */
+  async getLatestBacktestResult(): Promise<VolumeBacktest | null> {
+    return this.volumeBacktestModel
+      .findOne()
+      .sort({ timestamp: -1 }) // 按时间倒序排列，获取最新的一条
+      .exec();
   }
 }
