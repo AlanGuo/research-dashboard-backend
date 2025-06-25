@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron, CronExpression, Timeout } from '@nestjs/schedule';
 import { BinanceVolumeBacktestService } from '../services/binance-volume-backtest.service';
 import { ConfigService } from '../config/config.service';
 import { sendEmail } from '../utils/util';
@@ -17,6 +17,7 @@ export class VolumeBacktestSchedulerTask {
   /**
    * 定时任务：每天UTC时间 00:00:10, 08:00:10, 16:00:10 执行异步回测
    */
+  // @Timeout(1000) // 初始延迟1秒执行
   @Cron('10 0,8,16 * * *', { timeZone: 'UTC' })
   async executeScheduledBacktest() {
     this.logger.log('开始执行定时回测任务');
@@ -30,6 +31,9 @@ export class VolumeBacktestSchedulerTask {
 
       if (hasRunningTask) {
         this.logger.warn('检测到有正在执行的异步回测任务，跳过本次定时执行');
+        
+        // 发送跳过执行通知邮件
+        await this.sendSkipNotification();
         return;
       }
 
@@ -113,7 +117,6 @@ export class VolumeBacktestSchedulerTask {
   private calculateNextScheduledTime(): Date {
     const now = new Date();
     const currentUTCHour = now.getUTCHours();
-    const scheduledHours = [0, 8, 16];
     
     // 找到下一个调度时间点
     let nextHour: number;
@@ -149,7 +152,7 @@ export class VolumeBacktestSchedulerTask {
         return;
       }
 
-      const subject = '定时回测任务执行失败通知';
+      const subject = '[BTCDOM2]定时回测任务执行失败通知';
       const content = `
 定时回测任务执行失败，详情如下：
 
@@ -171,6 +174,43 @@ export class VolumeBacktestSchedulerTask {
 
     } catch (emailError) {
       this.logger.error('发送错误通知邮件失败:', emailError);
+    }
+  }
+
+  /**
+   * 发送跳过执行通知邮件
+   */
+  private async sendSkipNotification() {
+    try {
+      const errorRecipient = this.configService.get<string>('email.errorNotificationRecipient');
+      
+      if (!errorRecipient) {
+        this.logger.warn('未配置错误通知邮件收件人，跳过邮件发送');
+        return;
+      }
+
+      const subject = '[BTCDOM2]定时回测任务跳过执行通知';
+      const content = `
+定时回测任务跳过执行，详情如下：
+
+时间：${new Date().toISOString()}
+原因：检测到有正在执行的异步回测任务
+状态：已跳过本次定时执行
+
+系统将在下一个调度时间点重新尝试执行。
+      `;
+
+      await sendEmail({
+        address: errorRecipient,
+        subject,
+        content,
+        configService: this.configService,
+      });
+
+      this.logger.log(`跳过执行通知邮件已发送至: ${errorRecipient}`);
+
+    } catch (emailError) {
+      this.logger.error('发送跳过执行通知邮件失败:', emailError);
     }
   }
 }

@@ -53,9 +53,7 @@ export async function sendEmail({
   );
 
   try {
-    const sesClient = new SESClient({
-      region: configService.get<string>("aws.region") || "us-east-1"
-    });
+    const sesClient = new SESClient();
     return await sesClient.send(sendEmailCommand);
   } catch (e) {
     console.error("Failed to send email.");
