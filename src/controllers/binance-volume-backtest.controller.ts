@@ -378,4 +378,49 @@ export class BinanceVolumeBacktestController {
       );
     }
   }
+
+  /**
+   * 补充往期缺失的currentFundingRate字段
+   * POST /v1/binance/volume-backtest/backfill-current-funding-rate
+   */
+  @Post("backfill-current-funding-rate")
+  async backfillCurrentFundingRate(
+    @Body() params: { startTime?: string; endTime?: string; },
+  ) {
+    try {
+      this.logger.log(`开始补充currentFundingRate: ${JSON.stringify(params)}`);
+
+      let startTime: Date | undefined;
+      let endTime: Date | undefined;
+
+      if (params.startTime) {
+        startTime = new Date(params.startTime);
+      }
+
+      if (params.endTime) {
+        endTime = new Date(params.endTime);
+      }
+
+      // 验证时间范围
+      if (startTime && endTime && startTime >= endTime) {
+        throw new HttpException(
+          "结束时间必须大于开始时间",
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      const result = await this.volumeBacktestService.backfillCurrentFundingRate(
+        startTime,
+        endTime
+      );
+
+      return result;
+    } catch (error) {
+      this.logger.error("补充currentFundingRate失败:", error);
+      throw new HttpException(
+        error.message || "补充currentFundingRate失败",
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
 }

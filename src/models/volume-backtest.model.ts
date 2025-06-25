@@ -67,6 +67,7 @@ export interface HourlyRankingItem {
   futureSymbol?: string; // 对应的期货交易对symbol（如果与现货不同）
   futurePriceAtTime?: number; // 期货价格（当前时间点）
   fundingRateHistory?: FundingRateHistoryItem[]; // 对应时间段的资金费率历史
+  currentFundingRate?: number; // 当期可用的最新资金费率（用于选股评分）
 }
 
 export const VolumeBacktestSchema =

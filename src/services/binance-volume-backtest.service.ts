@@ -3267,4 +3267,241 @@ export class BinanceVolumeBacktestService {
       .sort({ timestamp: -1 }) // 按时间倒序排列，获取最新的一条
       .exec();
   }
+
+  /**
+   * 补充往期缺失的currentFundingRate字段
+   */
+  async backfillCurrentFundingRate(
+    startTime?: Date,
+    endTime?: Date
+  ): Promise<{
+    success: boolean;
+    processed: number;
+    updated: number;
+    message: string;
+  }> {
+    try {
+      this.logger.log('开始补充往期缺失的currentFundingRate字段');
+
+      // 构建查询条件
+      const query: any = {};
+      if (startTime && endTime) {
+        query.timestamp = { $gte: startTime, $lte: endTime };
+      } else if (startTime) {
+        query.timestamp = { $gte: startTime };
+      } else if (endTime) {
+        query.timestamp = { $lte: endTime };
+      }
+
+      // 查询需要补充的记录
+      const records = await this.volumeBacktestModel
+        .find(query)
+        .sort({ timestamp: 1 })
+        .exec();
+
+      if (records.length === 0) {
+        return {
+          success: true,
+          processed: 0,
+          updated: 0,
+          message: '没有找到需要处理的记录',
+        };
+      }
+
+      this.logger.log(`找到 ${records.length} 条记录需要处理`);
+
+      let processed = 0;
+      let updated = 0;
+
+      for (const record of records) {
+        try {
+          processed++;
+
+          // 为每个ranking项补充currentFundingRate
+          const updatedRankings = await this.addCurrentFundingRateToRankings(
+            record.rankings,
+            record.timestamp,
+          );
+
+          // 更新数据库记录
+          await this.volumeBacktestModel.findByIdAndUpdate(
+            record._id,
+            { rankings: updatedRankings },
+            { new: true },
+          );
+
+          updated++;
+          
+          if (processed % 10 === 0) {
+            this.logger.log(`进度: ${processed}/${records.length} (已更新: ${updated})`);
+          }
+
+          // 添加小延迟避免过于频繁的API调用
+          await this.delay(200);
+
+        } catch (error) {
+          this.logger.error(`处理记录失败 (${record.timestamp.toISOString()}):`, error);
+        }
+      }
+
+      const message = `处理完成: 处理 ${processed} 条记录, 成功更新 ${updated} 条`;
+      this.logger.log(message);
+
+      return {
+        success: true,
+        processed,
+        updated,
+        message,
+      };
+
+    } catch (error) {
+      this.logger.error('补充currentFundingRate失败:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 为ranking项添加currentFundingRate字段
+   */
+  private async addCurrentFundingRateToRankings(
+    rankings: any[],
+    timestamp: Date,
+  ): Promise<any[]> {
+    try {
+      // 收集所有需要查询资金费率的symbols
+      const symbolsToQuery: string[] = [];
+      const symbolToFutureSymbolMap: { [key: string]: string } = {};
+
+      for (const ranking of rankings) {
+        const futureSymbol = await this.binanceService.mapToFuturesSymbol(ranking.symbol);
+        if (futureSymbol) {
+          symbolsToQuery.push(futureSymbol);
+          symbolToFutureSymbolMap[ranking.symbol] = futureSymbol;
+        }
+      }
+
+      if (symbolsToQuery.length === 0) {
+        return rankings;
+      }
+
+      // 获取当期时间点的资金费率（startTime=timestamp, endTime=timestamp+10分钟）
+      const currentTime = timestamp.getTime();
+      const startTime = currentTime;
+      const endTime = currentTime + 10 * 60 * 1000; // 10分钟后
+
+      this.logger.debug(
+        `获取当期资金费率: ${new Date(startTime).toISOString()} 到 ${new Date(endTime).toISOString()}`,
+      );
+
+      // 批量获取资金费率
+      const fundingRateMap = await this.getCurrentFundingRateBatch(
+        symbolsToQuery,
+        startTime,
+        endTime,
+      );
+
+      // 为每个ranking项添加currentFundingRate
+      const updatedRankings = rankings.map((ranking) => {
+        const futureSymbol = symbolToFutureSymbolMap[ranking.symbol];
+        if (futureSymbol) {
+          const currentFundingRates = fundingRateMap.get(futureSymbol);
+          if (currentFundingRates && currentFundingRates.length > 0) {
+            // 取最新的一条资金费率记录
+            const latestFunding = currentFundingRates[currentFundingRates.length - 1];
+            return {
+              ...ranking,
+              currentFundingRate: latestFunding.fundingRate,
+            };
+          }
+        }
+        return ranking;
+      });
+
+      return updatedRankings;
+
+    } catch (error) {
+      this.logger.error('添加currentFundingRate失败:', error);
+      return rankings;
+    }
+  }
+
+  /**
+   * 批量获取当期资金费率
+   */
+  private async getCurrentFundingRateBatch(
+    symbols: string[],
+    startTime: number,
+    endTime: number,
+  ): Promise<Map<string, FundingRateHistoryItem[]>> {
+    const fundingRateMap = new Map<string, FundingRateHistoryItem[]>();
+
+    // 由于资金费率API有频率限制，使用分批处理
+    const batchSize = 5; // 更小的批次大小
+    const batches = [];
+
+    for (let i = 0; i < symbols.length; i += batchSize) {
+      batches.push(symbols.slice(i, i + batchSize));
+    }
+
+    this.logger.debug(
+      `分${batches.length}批获取当期资金费率，每批${batchSize}个交易对`,
+    );
+
+    for (let i = 0; i < batches.length; i++) {
+      const batch = batches[i];
+
+      // 批次间延迟
+      if (i > 0) {
+        await this.delay(2000);
+      }
+
+      const { results } = await this.processConcurrentlyWithPool(
+        batch,
+        async (symbol: string) => {
+          try {
+            const data: FundingRateData[] = await this.binanceService.getFundingRateHistory({
+              symbol,
+              startTime,
+              endTime,
+              limit: 10, // 只需要少量记录
+            });
+
+            if (!Array.isArray(data)) {
+              this.logger.warn(`${symbol} 资金费率返回非数组数据:`, data);
+              return { symbol, history: [] };
+            }
+
+            const history = data.map((item) => ({
+              fundingTime: new Date(item.fundingTime),
+              fundingRate: parseFloat(item.fundingRate.toString()),
+              markPrice: parseFloat(item.markPrice.toString()),
+            }));
+
+            return { symbol, history };
+
+          } catch (error) {
+            this.logger.warn(`获取 ${symbol} 当期资金费率失败:`, error.message);
+            return { symbol, history: [] };
+          }
+        },
+        {
+          maxConcurrency: 3, // 更小的并发数
+          retryFailedItems: false,
+          maxRetries: 1,
+        },
+      );
+
+      for (const [, result] of results) {
+        if (result && result.history) {
+          fundingRateMap.set(result.symbol, result.history);
+        }
+      }
+
+      this.logger.debug(
+        `批次${i + 1}/${batches.length}完成，累计成功: ${fundingRateMap.size}个`,
+      );
+    }
+
+    return fundingRateMap;
+  }
 }
