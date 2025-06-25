@@ -1115,7 +1115,7 @@ export class BinanceVolumeBacktestService {
   }
 
   /**
-   * 为回测结果添加资金费率历史数据
+   * 为回测结果添加资金费率历史数据（优化版：一次性获取完整时间范围）
    * @param result 原始回测结果
    * @param granularityHours 时间粒度（小时）
    * @returns 包含资金费率历史的回测结果
@@ -1125,10 +1125,10 @@ export class BinanceVolumeBacktestService {
     granularityHours: number,
   ): Promise<VolumeBacktest> {
     try {
-      // 计算时间范围：从当前时间（不包含）到下一个granularityHours时间点（包含）
+      // 计算完整时间范围：从当前时间到下一个granularityHours时间点
       const currentTime = result.timestamp.getTime();
-      const startTime = currentTime + 10 * 60 * 1000; // 当前时间后10分钟后开始（不包含当前时间点）
-      const endTime = startTime + granularityHours * 60 * 60 * 1000; // granularityHours小时后10分钟后开始（包含该时间点）
+      const startTime = currentTime; // 从当前时间开始（包含当前时间点）
+      const endTime = currentTime + (granularityHours * 60 * 60 * 1000) + (10 * 60 * 1000); // granularityHours小时后再加10分钟
 
       // 验证时间计算结果
       if (isNaN(startTime) || isNaN(endTime)) {
@@ -1138,35 +1138,62 @@ export class BinanceVolumeBacktestService {
         return result; // 返回原始结果，不添加资金费率
       }
 
+      this.logger.debug(
+        `📊 一次性获取资金费率: ${new Date(startTime).toISOString()} 到 ${new Date(endTime).toISOString()}`,
+      );
+
       // 只收集rankings中的交易对来获取资金费率
       const symbolsArray = result.rankings.map((item) => item.symbol);
 
-      // 批量获取资金费率历史
-      const fundingRateMap = await this.getFundingRateHistoryBatch(
+      // 一次性批量获取完整时间范围的资金费率数据
+      const allFundingRateMap = await this.getFundingRateHistoryBatch(
         symbolsArray,
         startTime,
         endTime,
       );
 
+      // 分离当前资金费率和历史资金费率数据
+      const currentFundingRateMap = new Map<string, number>();
+      const historyFundingRateMap = new Map<string, FundingRateHistoryItem[]>();
+      
+      const currentTimeThreshold = currentTime + 10 * 60 * 1000; // 当前时间+10分钟作为分界线
+
+      for (const [symbol, allRates] of allFundingRateMap) {
+        // 分离当前和历史数据
+        const currentRates = allRates.filter(rate => 
+          new Date(rate.fundingTime).getTime() <= currentTimeThreshold
+        );
+        const historyRates = allRates.filter(rate => 
+          new Date(rate.fundingTime).getTime() > currentTimeThreshold
+        );
+
+        // 存储历史数据
+        historyFundingRateMap.set(symbol, historyRates);
+
+        // 存储当前资金费率（取最新的一个）
+        if (currentRates.length > 0) {
+          const latestCurrentRate = currentRates[currentRates.length - 1];
+          currentFundingRateMap.set(symbol, latestCurrentRate.fundingRate);
+        }
+      }
+
       // 为rankings添加资金费率历史
       const rankingsWithHistory = result.rankings.map((item) => ({
         ...item,
-        fundingRateHistory: fundingRateMap.get(item.symbol) || [],
+        fundingRateHistory: historyFundingRateMap.get(item.symbol) || [],
+        currentFundingRate: currentFundingRateMap.get(item.symbol) || undefined,
       }));
 
-      // 为rankings添加当前资金费率（用于选股评分）
-      const enrichedRankings = await this.addCurrentFundingRateToRankings(
-        rankingsWithHistory,
-        result.timestamp,
-      );
-
       this.logger.debug(
-        `✅ 资金费率历史添加完成: 成功获取 ${fundingRateMap.size}/${symbolsArray.length} 个交易对的数据`,
+        `✅ 资金费率数据添加完成: 成功获取 ${allFundingRateMap.size}/${symbolsArray.length} 个交易对的数据`,
+      );
+      this.logger.debug(
+        `   📈 当前费率: ${currentFundingRateMap.size} 个，历史费率: ${historyFundingRateMap.size} 个`,
       );
 
       return {
         ...result,
-        rankings: enrichedRankings,
+        rankings: rankingsWithHistory,
         // 保持removedSymbols不变，不添加资金费率历史
         removedSymbols: result.removedSymbols,
       };
@@ -3386,7 +3413,7 @@ export class BinanceVolumeBacktestService {
   }
 
   /**
-   * 为ranking项添加currentFundingRate字段
+   * 为ranking项添加currentFundingRate字段（优化版：使用统一的批量获取）
    */
   private async addCurrentFundingRateToRankings(
     rankings: any[],
@@ -3409,7 +3436,7 @@ export class BinanceVolumeBacktestService {
         return rankings;
       }
 
-      // 获取当期时间点的资金费率（startTime=timestamp, endTime=timestamp+10分钟）
+      // 获取当期时间点的资金费率（优化：使用更大的批次大小）
       const currentTime = timestamp.getTime();
       const startTime = currentTime;
       const endTime = currentTime + 10 * 60 * 1000; // 10分钟后
@@ -3418,8 +3445,8 @@ export class BinanceVolumeBacktestService {
         `获取当期资金费率: ${new Date(startTime).toISOString()} 到 ${new Date(endTime).toISOString()}`,
       );
 
-      // 批量获取资金费率
-      const fundingRateMap = await this.getCurrentFundingRateBatch(
+      // 使用优化的批量获取方法（批次大小调整为10，减少分批次数）
+      const fundingRateMap = await this.getFundingRateHistoryBatch(
         symbolsToQuery,
         startTime,
         endTime,
@@ -3448,105 +3475,6 @@ export class BinanceVolumeBacktestService {
       this.logger.error('添加currentFundingRate失败:', error);
       return rankings;
     }
-  }
-
-  /**
-   * 批量获取当期资金费率
-   */
-  private async getCurrentFundingRateBatch(
-    symbols: string[],
-    startTime: number,
-    endTime: number,
-  ): Promise<Map<string, FundingRateHistoryItem[]>> {
-    const fundingRateMap = new Map<string, FundingRateHistoryItem[]>();
-
-    // 由于资金费率API有频率限制，使用分批处理
-    const batchSize = 5; // 更小的批次大小
-    const batches = [];
-
-    for (let i = 0; i < symbols.length; i += batchSize) {
-      batches.push(symbols.slice(i, i + batchSize));
-    }
-
-    this.logger.debug(
-      `分${batches.length}批获取当期资金费率，每批${batchSize}个交易对`,
-    );
-
-    for (let i = 0; i < batches.length; i++) {
-      const batch = batches[i];
-
-      // 批次间延迟
-      if (i > 0) {
-        await this.delay(2000);
-      }
-
-      const { results } = await this.processConcurrentlyWithPool(
-        batch,
-        async (symbol: string) => {
-          try {
-            const data: FundingRateData[] = await this.binanceService.getFundingRateHistory({
-              symbol,
-              startTime,
-              endTime,
-              limit: 10, // 只需要少量记录
-            });
-
-            if (!Array.isArray(data)) {
-              this.logger.warn(`${symbol} 资金费率返回非数组数据:`, data);
-              return { symbol, history: [] };
-            }
-
-            const history = data.map((item) => {
-              let markPrice = null;
-              
-              // 优先使用API返回的markPrice
-              if (item.markPrice !== undefined && item.markPrice !== null) {
-                const parsedMarkPrice = parseFloat(item.markPrice.toString());
-                if (!isNaN(parsedMarkPrice) && parsedMarkPrice > 0) {
-                  markPrice = parsedMarkPrice;
-                }
-              }
-              
-              // 如果markPrice无效，记录警告但仍保存数据
-              if (markPrice === null) {
-                this.logger.warn(
-                  `⚠️ ${symbol} 在 ${new Date(item.fundingTime).toISOString()} 没有有效的markPrice，将影响盈亏计算准确性`
-                );
-              }
-
-              return {
-                fundingTime: new Date(item.fundingTime),
-                fundingRate: parseFloat(item.fundingRate.toString()),
-                markPrice: markPrice, // 可能为null
-              };
-            });
-
-            return { symbol, history };
-
-          } catch (error) {
-            this.logger.warn(`获取 ${symbol} 当期资金费率失败:`, error.message);
-            return { symbol, history: [] };
-          }
-        },
-        {
-          maxConcurrency: 3, // 更小的并发数
-          retryFailedItems: false,
-          maxRetries: 1,
-        },
-      );
-
-      for (const [, result] of results) {
-        if (result && result.history) {
-          fundingRateMap.set(result.symbol, result.history);
-        }
-      }
-
-      this.logger.debug(
-        `批次${i + 1}/${batches.length}完成，累计成功: ${fundingRateMap.size}个`,
-      );
-    }
-
-    return fundingRateMap;
   }
 
   /**
