@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression, Timeout } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 import { BinanceVolumeBacktestService } from '../services/binance-volume-backtest.service';
 import { ConfigService } from '../config/config.service';
 import { sendEmail } from '../utils/util';
@@ -25,27 +25,30 @@ export class VolumeBacktestSchedulerTask {
     try {
       // 1. 检查是否有正在执行的异步回测任务
       const runningTasks = await this.volumeBacktestService.getAsyncBacktestTasks(100, 0);
-      const hasRunningTask = runningTasks.tasks.some(task => 
+      const hasRunningTask = runningTasks.tasks.some(task =>
         task.status === 'running' || task.status === 'pending'
       );
 
       if (hasRunningTask) {
         this.logger.warn('检测到有正在执行的异步回测任务，跳过本次定时执行');
-        
+
         // 发送跳过执行通知邮件
         await this.sendSkipNotification();
         return;
       }
 
-      // 2. 计算回测时间段
+      // 2. 补充历史数据的资金费率历史（新增）
+      await this.supplementHistoricalFundingRates();
+
+      // 3. 计算回测时间段
       const timeRange = await this.calculateBacktestTimeRange();
-      
+
       if (!timeRange) {
         this.logger.warn('无法计算有效的回测时间段，跳过本次执行');
         return;
       }
 
-      // 3. 构建回测参数
+      // 4. 构建回测参数
       const params: VolumeBacktestParamsDto = {
         startTime: timeRange.startTime.toISOString(),
         endTime: timeRange.endTime.toISOString(),
@@ -58,7 +61,7 @@ export class VolumeBacktestSchedulerTask {
 
       this.logger.log(`开始执行定时回测，参数: ${JSON.stringify(params)}`);
 
-      // 4. 启动异步回测
+      // 5. 启动异步回测
       const result = await this.volumeBacktestService.startAsyncVolumeBacktest(params);
       
       this.logger.log(`定时回测任务启动成功，任务ID: ${result.taskId}`);
@@ -208,6 +211,27 @@ export class VolumeBacktestSchedulerTask {
 
     } catch (emailError) {
       this.logger.error('发送跳过执行通知邮件失败:', emailError);
+    }
+  }
+
+  /**
+   * 补充历史数据的资金费率历史
+   */
+  private async supplementHistoricalFundingRates() {
+    try {
+      this.logger.log('🔄 开始补充历史数据的资金费率历史...');
+
+      // 补充过去24小时内8小时前的记录（确保这些记录的未来8小时数据现在已经可用）
+      const result = await this.volumeBacktestService.supplementFundingRateHistory();
+
+      if (result.success) {
+        this.logger.log(`✅ 资金费率历史补充完成: ${result.message}`);
+      } else {
+        this.logger.warn(`⚠️ 资金费率历史补充失败: ${result.message}`);
+      }
+    } catch (error) {
+      this.logger.error('补充资金费率历史时发生错误:', error);
+      // 不抛出错误，避免影响正常的回测流程
     }
   }
 }

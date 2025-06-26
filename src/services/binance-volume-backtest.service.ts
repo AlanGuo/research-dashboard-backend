@@ -3153,14 +3153,16 @@ export class BinanceVolumeBacktestService {
   }
 
   /**
-   * 补充现有数据中缺失的BTCDOM价格信息
-   * @param startTime 开始时间
-   * @param endTime 结束时间
+   * 补充现有数据中缺失的资金费率历史数据
+   * @param startTime 开始时间（可选）
+   * @param endTime 结束时间（可选）
+   * @param granularityHours 时间粒度（小时），默认8小时
    * @returns 更新结果
    */
-  async supplementBtcdomPrices(
+  async supplementFundingRateHistory(
     startTime?: Date,
     endTime?: Date,
+    granularityHours: number = 8,
   ): Promise<{
     success: boolean;
     updated: number;
@@ -3169,30 +3171,34 @@ export class BinanceVolumeBacktestService {
     message: string;
   }> {
     const start = Date.now();
-    this.logger.log('🔄 开始补充BTCDOM价格数据...');
+    this.logger.log('🔄 开始补充资金费率历史数据...');
 
     try {
-      // 构建查询条件：查找没有BTCDOM价格的记录
-      const query: any = {
-        $or: [
-          { btcdomPrice: { $exists: false } },
-          { btcdomPrice: null },
-          { btcdomPriceChange24h: { $exists: false } },
-          { btcdomPriceChange24h: null },
-        ],
-      };
+      // 计算查询时间范围：查找8小时前的记录（确保未来8小时数据已经可用）
+      const now = new Date();
+      const defaultEndTime = new Date(now.getTime() - granularityHours * 60 * 60 * 1000);
+      const defaultStartTime = new Date(defaultEndTime.getTime() - 24 * 60 * 60 * 1000); // 回填过去24小时的记录
+
+      // 构建查询条件
+      const query: any = {};
 
       if (startTime && endTime) {
         // 如果同时提供了开始和结束时间，使用闭区间查询
         query.timestamp = { $gte: startTime, $lte: endTime };
       } else if (startTime) {
-        // 只有开始时间，查询大于等于开始时间的记录
-        query.timestamp = { $gte: startTime };
+        // 只有开始时间，查询大于等于开始时间且小于等于默认结束时间的记录
+        query.timestamp = { $gte: startTime, $lte: defaultEndTime };
       } else if (endTime) {
-        // 只有结束时间，查询小于等于结束时间的记录
-        query.timestamp = { $lte: endTime };
+        // 只有结束时间，查询大于等于默认开始时间且小于等于结束时间的记录
+        query.timestamp = { $gte: defaultStartTime, $lte: endTime };
+      } else {
+        // 如果都没有提供，则查询默认时间范围内的记录
+        query.timestamp = { $gte: defaultStartTime, $lte: defaultEndTime };
       }
-      // 如果都没有提供，则查询所有缺失BTCDOM价格的记录
+
+      this.logger.log(
+        `📅 查询时间范围: ${new Date(query.timestamp.$gte).toISOString()} 到 ${new Date(query.timestamp.$lte).toISOString()}`
+      );
 
       // 获取需要补充的记录
       const recordsToUpdate = await this.volumeBacktestModel
@@ -3206,11 +3212,13 @@ export class BinanceVolumeBacktestService {
           updated: 0,
           skipped: 0,
           failed: 0,
-          message: '没有需要补充BTCDOM价格的记录',
+          message: '没有需要补充资金费率历史的记录',
         };
       }
 
-      this.logger.log(`📋 找到 ${recordsToUpdate.length} 条需要补充BTCDOM价格的记录`);
+      this.logger.log(
+        `📊 找到 ${recordsToUpdate.length} 条记录需要检查和补充资金费率历史数据`
+      );
 
       let updated = 0;
       let skipped = 0;
@@ -3219,35 +3227,42 @@ export class BinanceVolumeBacktestService {
       // 批量处理记录
       for (const record of recordsToUpdate) {
         try {
-          const currentTime = record.timestamp;
-          
-          // 获取BTCDOM价格
-          const { btcdomPrice, btcdomPriceChange24h } = await this.fetchBtcdomPrice(currentTime);
+          // 检查是否需要补充 fundingRateHistory
+          const needsUpdate = this.checkIfNeedsFundingRateUpdate(record, granularityHours);
 
-          if (btcdomPrice > 0) {
-            // 更新记录
+          if (!needsUpdate) {
+            skipped++;
+            continue;
+          }
+
+          // 补充资金费率历史数据
+          const updatedRecord = await this.addFundingRateHistoryToExistingRecord(
+            record,
+            granularityHours
+          );
+
+          if (updatedRecord) {
+            // 更新数据库记录
             await this.volumeBacktestModel.updateOne(
               { _id: record._id },
               {
                 $set: {
-                  btcdomPrice,
-                  btcdomPriceChange24h,
+                  rankings: updatedRecord.rankings,
                 },
               },
             );
             updated++;
-            
+
             if (updated % 10 === 0) {
               this.logger.log(`📈 已更新 ${updated}/${recordsToUpdate.length} 条记录`);
             }
           } else {
-            this.logger.warn(`⚠️ 无法获取 ${currentTime.toISOString()} 的BTCDOM价格`);
             skipped++;
           }
 
           // 添加延迟避免API限制
           if (updated % 5 === 0) {
-            await this.delay(1000);
+            await this.delay(2000);
           }
         } catch (error) {
           this.logger.error(`❌ 更新记录失败 ${record.timestamp.toISOString()}: ${error.message}`);
@@ -3256,8 +3271,8 @@ export class BinanceVolumeBacktestService {
       }
 
       const duration = Date.now() - start;
-      const message = `BTCDOM价格补充完成: 更新 ${updated} 条，跳过 ${skipped} 条，失败 ${failed} 条，耗时 ${(duration / 1000).toFixed(2)}s`;
-      
+      const message = `资金费率历史补充完成: 更新 ${updated} 条，跳过 ${skipped} 条，失败 ${failed} 条，耗时 ${(duration / 1000).toFixed(2)}s`;
+
       this.logger.log(`✅ ${message}`);
 
       return {
@@ -3268,7 +3283,7 @@ export class BinanceVolumeBacktestService {
         message,
       };
     } catch (error) {
-      this.logger.error(`❌ 补充BTCDOM价格失败: ${error.message}`);
+      this.logger.error(`❌ 补充资金费率历史失败: ${error.message}`);
       return {
         success: false,
         updated: 0,
@@ -3280,71 +3295,96 @@ export class BinanceVolumeBacktestService {
   }
 
   /**
-   * 获取指定时间的BTCDOM价格信息
-   * @param currentTime 当前时间
-   * @returns BTCDOM价格和变化率
+   * 检查记录是否需要补充资金费率历史数据
+   * @param record 回测记录
+   * @param granularityHours 时间粒度（用于计算预期的数据量）
+   * @returns 是否需要更新
    */
-  private async fetchBtcdomPrice(currentTime: Date): Promise<{
-    btcdomPrice: number;
-    btcdomPriceChange24h: number;
-  }> {
-    const maxRetries = 3;
-    
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        // 获取过去25小时的BTCDOM价格数据
-        const btcdom25hAgoTime = currentTime.getTime() - 25 * 60 * 60 * 1000;
-        const btcdomKlines = await this.binanceService.getFuturesKlines({
-          symbol: "BTCDOMUSDT",
-          interval: "1h",
-          startTime: btcdom25hAgoTime,
-          endTime: currentTime.getTime() + 60 * 60 * 1000,
-          limit: 26,
-        });
+  private checkIfNeedsFundingRateUpdate(
+    record: VolumeBacktest,
+    granularityHours: number
+  ): boolean {
+    if (!record.rankings || record.rankings.length === 0) {
+      return false;
+    }
 
-        if (btcdomKlines && btcdomKlines.length >= 2) {
-          const currentKline = btcdomKlines[btcdomKlines.length - 1];
-          const target24hAgoTime = currentTime.getTime() - 24 * 60 * 60 * 1000;
+    // 检查是否有交易对缺少 fundingRateHistory 或数据不完整
+    for (const ranking of record.rankings) {
+      if (!ranking.fundingRateHistory || ranking.fundingRateHistory.length === 0) {
+        return true;
+      }
 
-          // 找到最接近24小时前的K线数据
-          let btcdom24hAgoKline = null;
-          let minTimeDiff = Math.abs(
-            btcdomKlines[0].openTime - target24hAgoTime,
-          );
-
-          for (const kline of btcdomKlines) {
-            const timeDiff = Math.abs(kline.openTime - target24hAgoTime);
-            if (timeDiff < minTimeDiff) {
-              minTimeDiff = timeDiff;
-              btcdom24hAgoKline = kline;
-            }
-          }
-
-          if (currentKline && btcdom24hAgoKline) {
-            const btcdomPrice = parseFloat(currentKline.open);
-            const btcdomPrice24hAgo = parseFloat(btcdom24hAgoKline.open);
-
-            let btcdomPriceChange24h = 0;
-            if (btcdomPrice24hAgo > 0) {
-              btcdomPriceChange24h = ((btcdomPrice - btcdomPrice24hAgo) / btcdomPrice24hAgo) * 100;
-            }
-
-            return { btcdomPrice, btcdomPriceChange24h };
-          }
-        }
-
-        // 如果不是最后一次尝试，等待后重试
-        if (attempt < maxRetries) {
-          await this.delay(1000 * attempt);
-        }
-      } catch (error) {
-        if (attempt === maxRetries) {
-          this.logger.warn(`⚠️ 获取BTCDOM价格失败 (${currentTime.toISOString()}): ${error.message}`);
-        }
+      // 检查数据是否覆盖了完整的时间范围
+      // 资金费率每8小时结算一次，所以在granularityHours时间内至少应该有 Math.ceil(granularityHours / 8) 个记录
+      const expectedMinRecords = Math.max(1, Math.ceil(granularityHours / 8));
+      if (ranking.fundingRateHistory.length < expectedMinRecords) {
+        return true;
       }
     }
 
-    return { btcdomPrice: 0, btcdomPriceChange24h: 0 };
+    return false;
+  }
+
+  /**
+   * 为现有记录添加资金费率历史数据
+   * @param record 原始记录
+   * @param granularityHours 时间粒度
+   * @returns 更新后的记录
+   */
+  private async addFundingRateHistoryToExistingRecord(
+    record: VolumeBacktest,
+    granularityHours: number,
+  ): Promise<VolumeBacktest | null> {
+    try {
+      // 计算时间范围：从记录时间+10分钟到记录时间+granularityHours+10分钟
+      const currentTime = record.timestamp.getTime();
+      const startTime = currentTime + 10 * 60 * 1000; // 当前时间+10分钟
+      const endTime = currentTime + (granularityHours * 60 * 60 * 1000) + (10 * 60 * 1000); // granularityHours小时后+10分钟
+
+      // 验证时间计算结果
+      if (isNaN(startTime) || isNaN(endTime)) {
+        this.logger.error(
+          `❌ 时间计算错误: currentTime=${currentTime}, granularityHours=${granularityHours}`,
+        );
+        return null;
+      }
+
+      this.logger.debug(
+        `📊 补充资金费率历史: ${new Date(startTime).toISOString()} 到 ${new Date(endTime).toISOString()}`,
+      );
+
+      // 只收集rankings中的交易对来获取资金费率
+      const symbolsArray = record.rankings.map((item) => item.symbol);
+
+      // 批量获取资金费率历史数据
+      const fundingRateMap = await this.getFundingRateHistoryBatch(
+        symbolsArray,
+        startTime,
+        endTime,
+      );
+
+      // 更新rankings的fundingRateHistory
+      const updatedRankings = record.rankings.map((item) => ({
+        ...item,
+        fundingRateHistory: fundingRateMap.get(item.symbol) || [],
+        // 保持 currentFundingRate 不变
+      }));
+
+      this.logger.debug(
+        `✅ 资金费率历史数据补充完成: 成功获取 ${fundingRateMap.size}/${symbolsArray.length} 个交易对的数据`,
+      );
+
+      return {
+        ...record,
+        rankings: updatedRankings,
+      };
+    } catch (error) {
+      this.logger.error(
+        `❌ 为记录添加资金费率历史失败: ${record.timestamp.toISOString()}`,
+        error,
+      );
+      return null;
+    }
   }
 
   /**
