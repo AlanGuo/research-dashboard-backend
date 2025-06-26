@@ -110,17 +110,29 @@ export class BtcDomService {
       const periods = temperatureData.periods;
       const startTimestamp = new Date(startDate).getTime();
       const endTimestamp = new Date(endDate).getTime();
+      
+      // Calculate today's start timestamp (00:00:00 UTC) to exclude today's data
+      // This prevents future data leakage by ensuring we only use closed K-line data
+      const now = new Date();
+      const todayStartUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+      const todayStartTimestamp = todayStartUTC.getTime();
 
-      // Filter periods within date range and above threshold
+      console.log(`[Temperature Filter] Today start timestamp: ${todayStartTimestamp} (${todayStartUTC.toISOString()})`);
+      console.log(`[Temperature Filter] Original periods count: ${periods.length}`);
+
+      // Filter periods within date range and above threshold, excluding today's data
       const filteredPeriods = periods.filter((period: any) => {
         const periodTimestamp = period["$time"] * 1000; // Convert to milliseconds
         const periodValue = period["MOScore"];
         return (
           periodTimestamp >= startTimestamp &&
           periodTimestamp <= endTimestamp &&
+          periodTimestamp < todayStartTimestamp && // Exclude today's potentially incomplete data
           periodValue > threshold
         );
       });
+
+      console.log(`[Temperature Filter] Filtered periods count: ${filteredPeriods.length}`);
 
       // Group consecutive periods
       const groupedPeriods = this.groupConsecutivePeriods(filteredPeriods);
