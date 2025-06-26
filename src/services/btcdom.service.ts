@@ -143,7 +143,7 @@ export class BtcDomService {
           timeframe,
           periods: groupedPeriods,
           totalPeriods: groupedPeriods.length,
-          threshold,
+          threshold: Number(threshold),
           dateRange: {
             start: startDate,
             end: endDate,
