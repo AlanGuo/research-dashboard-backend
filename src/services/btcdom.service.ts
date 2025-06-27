@@ -52,7 +52,6 @@ export class BtcDomService {
       const response = await this.notionClient.databases.query(queryParams);
       return this.processNotionData(response.results);
     } catch (error) {
-      console.error("Error fetching BTC Dominance data:", error);
       throw new Error(`Failed to fetch BTC Dominance data: ${error.message}`);
     }
   }
@@ -117,9 +116,6 @@ export class BtcDomService {
       const todayStartUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
       const todayStartTimestamp = todayStartUTC.getTime();
 
-      console.log(`[Temperature Filter] Today start timestamp: ${todayStartTimestamp} (${todayStartUTC.toISOString()})`);
-      console.log(`[Temperature Filter] Original periods count: ${periods.length}`);
-
       // Filter periods within date range and above threshold, excluding today's data
       const filteredPeriods = periods.filter((period: any) => {
         const periodTimestamp = period["$time"] * 1000; // Convert to milliseconds
@@ -131,8 +127,6 @@ export class BtcDomService {
           periodValue > threshold
         );
       });
-
-      console.log(`[Temperature Filter] Filtered periods count: ${filteredPeriods.length}`);
 
       // Group consecutive periods
       const groupedPeriods = this.groupConsecutivePeriods(filteredPeriods);
@@ -151,7 +145,6 @@ export class BtcDomService {
         },
       };
     } catch (error) {
-      console.error("Error fetching temperature periods:", error);
       throw new Error(`Failed to fetch temperature periods: ${error.message}`);
     }
   }
