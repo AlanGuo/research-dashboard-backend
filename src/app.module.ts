@@ -12,6 +12,7 @@ import { BtcDomModule } from "./modules/btcdom.module";
 import { RedisModule } from "./modules/redis.module";
 import { BinanceVolumeBacktestModule } from "./modules/binance-volume-backtest.module";
 import { TasksModule } from "./modules/tasks.module";
+import { Btcdom2PerformanceModule } from "./modules/btcdom2-performance.module";
 import { MongooseModule } from "@nestjs/mongoose";
 
 @Module({
@@ -36,6 +37,7 @@ import { MongooseModule } from "@nestjs/mongoose";
     RedisModule,
     BinanceVolumeBacktestModule,
     TasksModule,
+    Btcdom2PerformanceModule,
   ],
   controllers: [AppController],
   providers: [AppService],
