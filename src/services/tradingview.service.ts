@@ -635,7 +635,7 @@ export class TradingViewService implements OnModuleDestroy {
 
   /**
    * Map common interval strings to TradingView format
-   * @param interval Interval string (e.g., '1d', '4h', '1h', '15m', '5m')
+   * @param interval Interval string (e.g., '1d', '8h', '4h', '1h', '15m', '5m')
    * @returns TradingView interval format
    */
   private mapToTVInterval(interval: string): string {
@@ -649,6 +649,8 @@ export class TradingViewService implements OnModuleDestroy {
       "2h": "120",
       "4h": "240",
       "4H": "240",
+      "8h": "480",
+      "8H": "480",
       "1d": "D",
       "1D": "D",
       "1w": "W",
