@@ -33,13 +33,12 @@ export class BtcDomController {
   }
 
   /**
-   * Get temperature indicator periods above threshold
+   * Get temperature indicator raw data
    * @param symbol Symbol to fetch data for (default: OTHERS)
    * @param timeframe Timeframe for data (default: 1D)
    * @param startDate Start date in ISO format (default: 2020-01-01T00:00:00.000Z)
    * @param endDate End date in ISO format (default: current date)
-   * @param threshold Temperature threshold value (default: 60)
-   * @returns Filtered time periods above threshold
+   * @returns Raw temperature indicator data array
    */
   @Get("temperature-periods")
   async getTemperaturePeriods(
@@ -47,7 +46,6 @@ export class BtcDomController {
     @Query("timeframe") timeframe?: string,
     @Query("startDate") startDate?: string,
     @Query("endDate") endDate?: string,
-    @Query("threshold") threshold?: number,
   ) {
     try {
       const data = await this.btcDomService.getTemperaturePeriods(
@@ -55,7 +53,6 @@ export class BtcDomController {
         timeframe,
         startDate,
         endDate,
-        threshold,
       );
       return data;
     } catch (error) {

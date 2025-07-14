@@ -57,20 +57,18 @@ export class BtcDomService {
   }
 
   /**
-   * Get temperature indicator periods above threshold
+   * Get temperature indicator raw data
    * @param symbol Symbol to fetch data for (default: OTHERS)
    * @param timeframe Timeframe for data (default: 1D)
    * @param startDate Start date in ISO format (default: 2020-01-01)
    * @param endDate End date in ISO format (default: current date)
-   * @param threshold Temperature threshold value (default: 60)
-   * @returns Filtered time periods above threshold
+   * @returns Raw temperature indicator data array
    */
   async getTemperaturePeriods(
     symbol: string = "OTHERS",
     timeframe: string = "1D",
     startDate: string = "2020-01-01T00:00:00.000Z",
     endDate: string = new Date().toISOString(),
-    threshold: number = 60,
   ) {
     try {
       // Get TradingView session and signature from Redis
@@ -109,35 +107,31 @@ export class BtcDomService {
       const periods = temperatureData.periods;
       const startTimestamp = new Date(startDate).getTime();
       const endTimestamp = new Date(endDate).getTime();
-      
-      // Calculate today's start timestamp (00:00:00 UTC) to exclude today's data
-      // This prevents future data leakage by ensuring we only use closed K-line data
-      const now = new Date();
-      const todayStartUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-      const todayStartTimestamp = todayStartUTC.getTime();
 
-      // Filter periods within date range and above threshold, excluding today's data
+      // Filter periods within date range only, return raw data
       const filteredPeriods = periods.filter((period: any) => {
         const periodTimestamp = period["$time"] * 1000; // Convert to milliseconds
-        const periodValue = period["MOScore"];
         return (
           periodTimestamp >= startTimestamp &&
-          periodTimestamp <= endTimestamp &&
-          periodTimestamp < todayStartTimestamp && // Exclude today's potentially incomplete data
-          periodValue > threshold
+          periodTimestamp <= endTimestamp
         );
       });
 
-      // Group consecutive periods
-      const groupedPeriods = this.groupConsecutivePeriods(filteredPeriods);
+      // Convert to standardized format and sort by time
+      const temperatureData_formatted = filteredPeriods
+        .map((period: any) => ({
+          timestamp: new Date(period["$time"] * 1000).toISOString(),
+          value: period["MOScore"],
+        }))
+        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
       return {
         success: true,
         data: {
           symbol,
           timeframe,
-          periods: groupedPeriods,
-          totalPeriods: groupedPeriods.length,
-          threshold: Number(threshold),
+          data: temperatureData_formatted,
+          totalDataPoints: temperatureData_formatted.length,
           dateRange: {
             start: startDate,
             end: endDate,
@@ -149,58 +143,7 @@ export class BtcDomService {
     }
   }
 
-  /**
-   * Group consecutive periods into time ranges
-   * @param periods Array of filtered periods
-   * @returns Array of grouped time periods
-   */
-  private groupConsecutivePeriods(periods: any[]) {
-    if (periods.length === 0) return [];
 
-    // Sort periods by time
-    periods.sort((a, b) => a["$time"] - b["$time"]);
-
-    const groupedPeriods = [];
-    let currentGroup = {
-      start: new Date(periods[0]["$time"] * 1000).toISOString(),
-      end: new Date(periods[0]["$time"] * 1000).toISOString(),
-      maxValue: periods[0]["MOScore"],
-    };
-
-    for (let i = 1; i < periods.length; i++) {
-      const current = periods[i];
-      const previous = periods[i - 1];
-
-      // Check if current period is consecutive (next day)
-      const currentDate = new Date(current["$time"] * 1000);
-      const previousDate = new Date(previous["$time"] * 1000);
-      const daysDiff =
-        Math.abs(currentDate.getTime() - previousDate.getTime()) /
-        (1000 * 60 * 60 * 24);
-
-      if (daysDiff <= 1) {
-        // Consecutive period, extend current group
-        currentGroup.end = new Date(current["$time"] * 1000).toISOString();
-        currentGroup.maxValue = Math.max(
-          currentGroup.maxValue,
-          current["MOScore"],
-        );
-      } else {
-        // Non-consecutive period, start new group
-        groupedPeriods.push(currentGroup);
-        currentGroup = {
-          start: new Date(current["$time"] * 1000).toISOString(),
-          end: new Date(current["$time"] * 1000).toISOString(),
-          maxValue: current["MOScore"],
-        };
-      }
-    }
-
-    // Add the last group
-    groupedPeriods.push(currentGroup);
-
-    return groupedPeriods;
-  }
 
   /**
    * Process and transform Notion database results
