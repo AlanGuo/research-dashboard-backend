@@ -402,8 +402,7 @@ export class TradingViewService implements OnModuleDestroy {
       // Create a new client with custom session and signature
       const customClient = new Client({
         token: session,
-        signature,
-        location: "https://www.tradingview.com/",
+        signature
       });
 
       const chart = new customClient.Session.Chart();
