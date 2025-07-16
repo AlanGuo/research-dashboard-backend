@@ -1,7 +1,6 @@
 import { Injectable, OnModuleDestroy, Logger } from "@nestjs/common";
 // 使用路径映射导入 JavaScript 模块
-import * as TradingViewLib from "@lib/tradingview_api/main";
-const { TradingView } = TradingViewLib;
+import { Client, getIndicator } from "@alandlguo/tradingview-api";
 
 @Injectable()
 export class TradingViewService implements OnModuleDestroy {
@@ -33,7 +32,7 @@ export class TradingViewService implements OnModuleDestroy {
 
   private initClient(): void {
     try {
-      this.client = new TradingView.Client();
+      this.client = new Client();
       this.logger.log("TradingView client initialized");
     } catch (error) {
       this.logger.error(
@@ -401,10 +400,10 @@ export class TradingViewService implements OnModuleDestroy {
       }
 
       // Create a new client with custom session and signature
-      const customClient = new TradingView.Client({
+      const customClient = new Client({
         token: session,
         signature,
-        location: "https://cn.tradingview.com/",
+        location: "https://www.tradingview.com/",
       });
 
       const chart = new customClient.Session.Chart();
@@ -500,7 +499,7 @@ export class TradingViewService implements OnModuleDestroy {
             `[${requestId}] Fetching indicator with name: ${indicatorName}`,
           );
 
-          const tempIndicator = await TradingView.getIndicator(
+          const tempIndicator = await getIndicator(
             indicatorName,
             "last",
             session,
