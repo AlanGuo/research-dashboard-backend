@@ -1758,6 +1758,10 @@ export class BinanceVolumeBacktestService {
         this.logger.warn(
           `⚠️ ${symbol} 没有对应的期货合约，但却在rankings中出现了！这可能是缓存问题或过滤逻辑问题`,
         );
+        
+        // 自动清除缓存以解决过期数据问题
+        await this.invalidateStaleSymbolFilterCache(symbol);
+        
         return [];
       }
 
@@ -2078,6 +2082,47 @@ export class BinanceVolumeBacktestService {
       );
     } catch (error) {
       this.logger.error(`清理筛选缓存失败: ${error.message}`);
+    }
+  }
+
+  /**
+   * 当检测到期货合约映射失败时，清除可能包含过期数据的缓存
+   * @param problemSymbol 导致问题的交易对符号
+   */
+  private async invalidateStaleSymbolFilterCache(problemSymbol: string): Promise<void> {
+    try {
+      // 找到包含此交易对的所有缓存记录
+      const affectedCaches = await this.symbolFilterCacheModel.find({
+        validSymbols: problemSymbol,
+      });
+      
+      if (affectedCaches.length > 0) {
+        // 删除包含过期交易对的缓存记录
+        const result = await this.symbolFilterCacheModel.deleteMany({
+          validSymbols: problemSymbol,
+        });
+        
+        this.logger.log(
+          `🔄 检测到 ${problemSymbol} 期货合约失效，已清除 ${result.deletedCount} 个相关的符号筛选缓存`,
+        );
+        
+        // 记录受影响的缓存时间范围
+        const timeRanges = affectedCaches.map(cache => 
+          `${cache.createdAt.toISOString().split('T')[0]}`
+        ).join(', ');
+        
+        this.logger.log(
+          `📅 清除的缓存创建时间: ${timeRanges}`,
+        );
+      } else {
+        this.logger.log(
+          `🔍 未找到包含 ${problemSymbol} 的缓存记录，可能已被清理`,
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        `清除 ${problemSymbol} 相关缓存失败: ${error.message}`,
+      );
     }
   }
 
