@@ -121,7 +121,7 @@ export class BtcDomService {
       const temperatureData_formatted = filteredPeriods
         .map((period: any) => ({
           timestamp: new Date(period["$time"] * 1000).toISOString(),
-          value: period["MOScore"],
+          value: period["plot_0"],
         }))
         .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
