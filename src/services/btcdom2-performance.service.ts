@@ -4,7 +4,6 @@ import { Model, Connection, createConnection, Schema } from "mongoose";
 import { ConfigService } from "../config";
 import {
   Btcdom2Performance,
-  Btcdom2PerformanceDocument,
   Btcdom2PerformanceSchema
 } from "../models/btcdom2-performance.model";
 
