@@ -135,13 +135,6 @@ export class HowellLiquidityService {
       collateralMultiplier: 1.66,
       isRevised: true,
     },
-    {
-      date: "2025-07",
-      globalLiquidity: 182.77,
-      shadowMonetaryBase: 110.13,
-      collateralMultiplier: 1.66,
-      isRevised: true,
-    },
 
     // 周度数据（可能修正）
     {
