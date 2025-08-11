@@ -850,7 +850,7 @@ export class GliService {
 
   // GLI趋势时段数据
   public readonly centralBankTrendPeriods: GliTrendPeriod[] = [
-    { startDate: "2024-12-31", endDate: "2025-06-30", trend: "up" },
+    { startDate: "2024-12-31", endDate: "2025-08-11", trend: "up" },
     { startDate: "2024-09-17", endDate: "2024-12-31", trend: "down" },
     { startDate: "2024-07-01", endDate: "2024-09-17", trend: "up" },
     { startDate: "2024-01-02", endDate: "2024-07-01", trend: "down" },
@@ -873,7 +873,7 @@ export class GliService {
   ];
 
   public readonly m2TrendPeriods: GliTrendPeriod[] = [
-    { startDate: "2025-01-13", endDate: "2025-06-30", trend: "up" },
+    { startDate: "2025-01-13", endDate: "2025-08-11", trend: "up" },
     { startDate: "2024-10-01", endDate: "2025-01-13", trend: "down" },
     { startDate: "2023-11-01", endDate: "2024-10-01", trend: "up" },
     { startDate: "2022-11-04", endDate: "2023-02-02", trend: "up" },

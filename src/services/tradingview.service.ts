@@ -441,6 +441,7 @@ export class TradingViewService implements OnModuleDestroy {
           const marketOptions: any = {
             timeframe: tvInterval,
             adjustment: "dividends",
+            server: "prodata"
           };
 
           if (endDate) {
