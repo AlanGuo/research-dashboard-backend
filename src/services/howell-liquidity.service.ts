@@ -179,9 +179,17 @@ export class HowellLiquidityService {
     {
       date: "2025-07-28",
       rawDate: "2025-07-25",
-      globalLiquidity: 182.77,
-      shadowMonetaryBase: 110.13,
+      globalLiquidity: 182.8,
+      shadowMonetaryBase: 109.96,
       collateralMultiplier: 1.66,
+      isRevised: false,
+    },
+    {
+      date: "2025-08-05",
+      rawDate: "2025-08-02",
+      globalLiquidity: 182.7,
+      shadowMonetaryBase: 109.31,
+      collateralMultiplier: 1.67,
       isRevised: false,
     }
   ];
