@@ -132,7 +132,6 @@ export class Btcdom2PerformanceService {
 
       const results = await queryBuilder.exec();
 
-      this.logger.log(`查询到 ${results.length} 条btcdom2表现数据`);
       return results;
     } catch (error) {
       this.logger.error('获取btcdom2表现数据失败:', error);
