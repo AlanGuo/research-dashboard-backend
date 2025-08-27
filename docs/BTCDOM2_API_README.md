@@ -2,7 +2,7 @@
 
 ## 概述
 
-这个API提供了访问btcdom2策略实盘表现数据的接口，数据来源于生产数据库 `abtg-btcdom2-binance-prod-2025-06-24` 中的 `btcdom2_performance` 集合。
+这个API提供了访问btcdom2策略实盘表现数据的接口，数据来源于生产数据库 `abtg-btcdom2-binance-prod-2025-08-26` 中的 `btcdom2_performance` 集合。
 
 ## 基础URL
 

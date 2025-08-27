@@ -37,8 +37,6 @@ export class Btcdom2TradingLogsController {
     @Query("marketDataTimestamp") marketDataTimestamp?: string,
   ): Promise<Btcdom2TradingLogsResponse> {
     try {
-      this.logger.log(`获取btcdom2交易日志请求: startTimestamp=${startTimestamp}, endTimestamp=${endTimestamp}, marketDataTimestamp=${marketDataTimestamp}`);
-
       let data;
 
       // 如果提供了精确的市场数据时间戳，使用精确查询
