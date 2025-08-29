@@ -6,19 +6,71 @@ import {
   HttpException,
   HttpStatus,
 } from "@nestjs/common";
-import { Btcdom2PerformanceService } from "../services/btcdom2-performance.service";
+import { Btcdom2PositionHistoryService } from "../services/btcdom2-position-history.service";
 
-@Controller("/v1/btcdom2/performance")
-export class Btcdom2PerformanceController {
-  private readonly logger = new Logger(Btcdom2PerformanceController.name);
+@Controller("/v1/btcdom2/position-history")
+export class Btcdom2PositionHistoryController {
+  private readonly logger = new Logger(Btcdom2PositionHistoryController.name);
 
   constructor(
-    private readonly btcdom2PerformanceService: Btcdom2PerformanceService,
+    private readonly btcdom2PositionHistoryService: Btcdom2PositionHistoryService,
   ) {}
 
   /**
-   * 获取所有btcdom2策略表现数据
-   * GET /v1/btcdom2/performance
+   * 根据市值数据时间戳获取持仓历史数据
+   * GET /v1/btcdom2/position-history/by-timestamp?marketDataTimestamp=2025-08-29T08:00:00.000Z
+   */
+  @Get("/by-timestamp")
+  async getPositionByTimestamp(
+    @Query("marketDataTimestamp") marketDataTimestamp?: string,
+  ) {
+    try {
+      this.logger.log(`获取btcdom2持仓历史请求: marketDataTimestamp=${marketDataTimestamp}`);
+
+      if (!marketDataTimestamp) {
+        throw new HttpException(
+          "marketDataTimestamp参数是必需的",
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      // 解析时间戳参数
+      const timestampObj = new Date(marketDataTimestamp);
+      if (isNaN(timestampObj.getTime())) {
+        throw new HttpException(
+          "无效的时间戳格式，请使用ISO格式 (例如: 2025-08-29T08:00:00.000Z)",
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      const data = await this.btcdom2PositionHistoryService.getPositionByMarketDataTimestamp(
+        timestampObj
+      );
+
+      return {
+        success: true,
+        data,
+        query: {
+          marketDataTimestamp: timestampObj.toISOString(),
+        },
+      };
+    } catch (error) {
+      this.logger.error("获取btcdom2持仓历史数据失败:", error);
+      
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      
+      throw new HttpException(
+        error.message || "获取btcdom2持仓历史数据失败",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * 获取持仓历史数据 - 支持时间范围查询
+   * GET /v1/btcdom2/position-history
    * 
    * 查询参数:
    * - startDate: 开始日期 (ISO格式, 可选)
@@ -28,7 +80,7 @@ export class Btcdom2PerformanceController {
    * - limit: 限制返回数量 (可选)
    */
   @Get()
-  async getAllPerformanceData(
+  async getPositionHistory(
     @Query("startDate") startDate?: string,
     @Query("endDate") endDate?: string,
     @Query("sortBy") sortBy?: string,
@@ -36,7 +88,7 @@ export class Btcdom2PerformanceController {
     @Query("limit") limit?: string,
   ) {
     try {
-      this.logger.log(`获取btcdom2表现数据请求: startDate=${startDate}, endDate=${endDate}, sortBy=${sortBy}, sortOrder=${sortOrder}, limit=${limit}`);
+      this.logger.log(`获取btcdom2持仓历史数据请求: startDate=${startDate}, endDate=${endDate}, sortBy=${sortBy}, sortOrder=${sortOrder}, limit=${limit}`);
 
       // 解析日期参数
       let startDateObj: Date | undefined;
@@ -82,7 +134,7 @@ export class Btcdom2PerformanceController {
         }
       }
 
-      const data = await this.btcdom2PerformanceService.getAllPerformanceData(
+      const data = await this.btcdom2PositionHistoryService.getPositionHistory(
         startDateObj,
         endDateObj,
         sortBy || 'market_data_timestamp',
@@ -103,17 +155,16 @@ export class Btcdom2PerformanceController {
         },
       };
     } catch (error) {
-      this.logger.error("获取btcdom2表现数据失败:", error);
+      this.logger.error("获取btcdom2持仓历史数据失败:", error);
       
       if (error instanceof HttpException) {
         throw error;
       }
       
       throw new HttpException(
-        error.message || "获取btcdom2表现数据失败",
+        error.message || "获取btcdom2持仓历史数据失败",
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
-
 }

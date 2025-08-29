@@ -1,16 +1,16 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { InjectConnection } from "@nestjs/mongoose";
-import { Model, Connection, createConnection, Schema } from "mongoose";
+import { Model, Connection, createConnection } from "mongoose";
 import { ConfigService } from "../config";
 import {
-  Btcdom2Performance,
-  Btcdom2PerformanceSchema
-} from "../models/btcdom2-performance.model";
+  Btcdom2PositionHistory,
+  Btcdom2PositionHistorySchema
+} from "../models/btcdom2-position-history.model";
 
 @Injectable()
-export class Btcdom2PerformanceService {
-  private readonly logger = new Logger(Btcdom2PerformanceService.name);
-  private btcdom2PerformanceModel: Model<any>;
+export class Btcdom2PositionHistoryService {
+  private readonly logger = new Logger(Btcdom2PositionHistoryService.name);
+  private positionHistoryModel: Model<any>;
   private prodConnection: Connection;
 
   constructor(
@@ -36,23 +36,23 @@ export class Btcdom2PerformanceService {
       this.prodConnection = createConnection(`${prodDbUrl}/${prodDbName}`);
 
       this.prodConnection.on('connected', () => {
-        this.logger.log(`已连接到btcdom2实盘数据库: ${prodDbName}`);
+        this.logger.log(`已连接到btcdom2实盘持仓历史数据库: ${prodDbName}`);
       });
 
       this.prodConnection.on('error', (error) => {
-        this.logger.error('btcdom2实盘数据库连接错误:', error);
+        this.logger.error('btcdom2实盘持仓历史数据库连接错误:', error);
       });
 
       // 创建模型
-      this.btcdom2PerformanceModel = this.prodConnection.model(
-        'Btcdom2Performance',
-        Btcdom2PerformanceSchema,
-        'btcdom2_performance' // 指定集合名称
+      this.positionHistoryModel = this.prodConnection.model(
+        'Btcdom2PositionHistory',
+        Btcdom2PositionHistorySchema,
+        'btcdom2_position_history' // 指定集合名称
       );
 
-      this.logger.log('btcdom2实盘数据库模型已初始化');
+      this.logger.log('btcdom2实盘持仓历史数据库模型已初始化');
     } catch (error) {
-      this.logger.error('初始化btcdom2实盘数据库连接失败:', error);
+      this.logger.error('初始化btcdom2实盘持仓历史数据库连接失败:', error);
       throw error;
     }
   }
@@ -61,7 +61,7 @@ export class Btcdom2PerformanceService {
    * 确保数据库连接已建立
    */
   private async ensureConnection(): Promise<void> {
-    if (!this.btcdom2PerformanceModel) {
+    if (!this.positionHistoryModel) {
       await this.initializeProdConnection();
     }
 
@@ -76,21 +76,53 @@ export class Btcdom2PerformanceService {
   }
 
   /**
-   * 获取所有btcdom2策略表现数据
+   * 根据市值数据时间戳获取持仓历史数据
+   * @param marketDataTimestamp 市值数据时间戳
+   * @returns 持仓历史数据
+   */
+  async getPositionByMarketDataTimestamp(
+    marketDataTimestamp: Date
+  ): Promise<Btcdom2PositionHistory | null> {
+    try {
+      // 确保数据库连接已建立
+      await this.ensureConnection();
+
+      this.logger.log(`查询btcdom2持仓历史，时间戳: ${marketDataTimestamp.toISOString()}`);
+
+      const result = await this.positionHistoryModel
+        .findOne({ market_data_timestamp: marketDataTimestamp })
+        .sort({ timestamp: -1 }) // 如果有多条记录，取最新的
+        .exec();
+
+      if (result) {
+        this.logger.log(`找到btcdom2持仓历史数据, execution_id: ${result.execution_id}`);
+      } else {
+        this.logger.log(`未找到对应时间的btcdom2持仓历史数据`);
+      }
+
+      return result;
+    } catch (error) {
+      this.logger.error('获取btcdom2持仓历史数据失败:', error);
+      throw new Error(`获取btcdom2持仓历史数据失败: ${error.message}`);
+    }
+  }
+
+  /**
+   * 获取持仓历史数据 - 支持时间范围查询
    * @param startDate 开始日期 (可选)
    * @param endDate 结束日期 (可选)
    * @param sortBy 排序字段 (默认: market_data_timestamp)
    * @param sortOrder 排序方向 (默认: desc)
    * @param limit 限制返回数量 (可选)
-   * @returns btcdom2策略表现数据数组
+   * @returns 持仓历史数据数组
    */
-  async getAllPerformanceData(
+  async getPositionHistory(
     startDate?: Date,
     endDate?: Date,
     sortBy: string = 'market_data_timestamp',
     sortOrder: 'asc' | 'desc' = 'desc',
     limit?: number
-  ): Promise<Btcdom2Performance[]> {
+  ): Promise<Btcdom2PositionHistory[]> {
     try {
       // 确保数据库连接已建立
       await this.ensureConnection();
@@ -108,20 +140,11 @@ export class Btcdom2PerformanceService {
         }
       }
 
-      this.logger.log(`查询btcdom2表现数据，条件: ${JSON.stringify(query)}`);
-      this.logger.log(`startDate类型: ${typeof startDate}, 值: ${startDate}`);
-      this.logger.log(`endDate类型: ${typeof endDate}, 值: ${endDate}`);
-
-      // 先查询一条数据看看所有字段
-      const sampleData = await this.btcdom2PerformanceModel.findOne().exec();
-      if (sampleData) {
-        this.logger.log(`样本数据所有字段: ${JSON.stringify(Object.keys(sampleData.toObject()))}`);
-        this.logger.log(`样本数据market_data_timestamp类型: ${typeof sampleData.market_data_timestamp}, 值: ${sampleData.market_data_timestamp}`);
-      }
+      this.logger.log(`查询btcdom2持仓历史数据，条件: ${JSON.stringify(query)}`);
 
       // 构建查询
       const defaultSortBy = sortBy || 'market_data_timestamp';
-      let queryBuilder = this.btcdom2PerformanceModel
+      let queryBuilder = this.positionHistoryModel
         .find(query)
         .sort({ [defaultSortBy]: sortOrder === 'desc' ? -1 : 1 });
 
@@ -132,11 +155,12 @@ export class Btcdom2PerformanceService {
 
       const results = await queryBuilder.exec();
 
+      this.logger.log(`找到 ${results.length} 条btcdom2持仓历史数据`);
+
       return results;
     } catch (error) {
-      this.logger.error('获取btcdom2表现数据失败:', error);
-      throw new Error(`获取btcdom2表现数据失败: ${error.message}`);
+      this.logger.error('获取btcdom2持仓历史数据失败:', error);
+      throw new Error(`获取btcdom2持仓历史数据失败: ${error.message}`);
     }
   }
-
 }
