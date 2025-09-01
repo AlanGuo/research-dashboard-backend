@@ -460,12 +460,20 @@ export class TradingViewService implements OnModuleDestroy {
 
               // 根据时间框架调整range值
               let periodsNeeded = daysDiff;
-              if (tvInterval === "1D") {
+              if (tvInterval === "480") { // 8H = 480分钟
+                periodsNeeded = Math.ceil(daysDiff * 3); // 8H间隔一天有3个周期
+              } else if (tvInterval === "1D") {
                 periodsNeeded = daysDiff;
               } else if (tvInterval === "1W") {
                 periodsNeeded = Math.ceil(daysDiff / 7);
               } else if (tvInterval === "1M") {
                 periodsNeeded = Math.ceil(daysDiff / 30);
+              } else if (tvInterval === "60") { // 1H = 60分钟
+                periodsNeeded = daysDiff * 24;
+              } else if (tvInterval === "240") { // 4H = 240分钟
+                periodsNeeded = Math.ceil(daysDiff * 6);
+              } else if (tvInterval === "15") { // 15分钟
+                periodsNeeded = daysDiff * 96;
               }
 
               // 设置为正数表示获取to时间点之前的数据
