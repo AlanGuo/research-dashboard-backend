@@ -1366,6 +1366,7 @@ export class BinanceVolumeBacktestService {
   /**
    * 计算从上一期排名中移除的交易对数据
    * 在实时计算中使用，避免后续补充操作
+   * 只包含仍然符合筛选条件但不在当前排名中的交易对，排除不再符合条件的交易对（如期货合约下架）
    */
   private async calculateRemovedSymbols(
     currentTime: Date,
@@ -1400,62 +1401,103 @@ export class BinanceVolumeBacktestService {
           return [];
         }
 
-        // 找出从上一期排名中移除的交易对
-        const previousSymbols = new Set(previousRankings.map((r) => r.symbol));
-        const currentSymbols = new Set(currentRankings.map((r) => r.symbol));
-        const removedSymbolNames = Array.from(previousSymbols).filter(
-          (symbol) => !currentSymbols.has(symbol),
-        );
-
-        if (removedSymbolNames.length === 0) {
-          return [];
-        }
-
-        this.logger.debug(
-          `🔍 ${currentTime.toISOString()}: 通过实时计算发现 ${removedSymbolNames.length} 个移除的交易对`,
-        );
-
-        if (removedSymbolNames.length === 0) {
-          return [];
-        }
-
-        // 获取这些移除交易对的当前时间点数据
-        const removedSymbolsData = await this.getRemovedSymbolsData(
-          removedSymbolNames,
+        return await this.calculateValidRemovedSymbols(
+          previousRankings.map((r) => r.symbol),
+          currentRankings.map((r) => r.symbol),
           currentTime,
+          params,
         );
-
-        return removedSymbolsData;
       }
 
-      const previousSymbols = new Set(
+      return await this.calculateValidRemovedSymbols(
         previousResult.rankings.map((r) => r.symbol),
+        currentRankings.map((r) => r.symbol),
+        currentTime,
+        params,
       );
-      const currentSymbols = new Set(currentRankings.map((r) => r.symbol));
-      const removedSymbolNames = Array.from(previousSymbols).filter(
-        (symbol) => !currentSymbols.has(symbol),
+    } catch (error) {
+      this.logger.warn(
+        `⚠️ 计算removedSymbols失败 (${currentTime.toISOString()}): ${error.message}`,
+      );
+      return []; // 发生错误时返回空数组，不影响主流程
+    }
+  }
+
+  /**
+   * 计算仍然有效但被移除的交易对
+   * 排除不再符合筛选条件的交易对（如期货合约下架）
+   */
+  private async calculateValidRemovedSymbols(
+    previousSymbols: string[],
+    currentSymbols: string[],
+    currentTime: Date,
+    params: VolumeBacktestParamsDto,
+  ): Promise<HourlyRankingItem[]> {
+    const previousSymbolsSet = new Set(previousSymbols);
+    const currentSymbolsSet = new Set(currentSymbols);
+    
+    // 找出从上一期排名中消失的交易对
+    const removedSymbolNames = Array.from(previousSymbolsSet).filter(
+      (symbol) => !currentSymbolsSet.has(symbol),
+    );
+
+    if (removedSymbolNames.length === 0) {
+      return [];
+    }
+
+    this.logger.debug(
+      `🔍 ${currentTime.toISOString()}: 发现 ${removedSymbolNames.length} 个从排名中消失的交易对，检查是否仍符合筛选条件`,
+    );
+
+    try {
+      // 使用筛选逻辑检查这些交易对是否仍然有效
+      const filterResult = await this.filterSymbolsConcurrently(
+        removedSymbolNames,
+        {
+          minHistoryDays: params.minHistoryDays || 365,
+          requireFutures: true,
+          excludeStablecoins: true,
+          referenceTime: currentTime,
+        },
       );
 
-      if (removedSymbolNames.length === 0) {
+      // 只有仍然符合筛选条件的交易对才被归类为 removedSymbols
+      const validRemovedSymbols = filterResult.valid;
+      const invalidRemovedSymbols = filterResult.invalid;
+
+      if (invalidRemovedSymbols.length > 0) {
+        this.logger.log(
+          `⚠️ ${currentTime.toISOString()}: ${invalidRemovedSymbols.length} 个交易对因不再符合条件被排除 (如期货合约下架): ${invalidRemovedSymbols.slice(0, 3).join(", ")}${invalidRemovedSymbols.length > 3 ? "..." : ""}`,
+        );
+      }
+
+      if (validRemovedSymbols.length === 0) {
         return [];
       }
 
       this.logger.debug(
-        `🔍 ${currentTime.toISOString()}: 发现 ${removedSymbolNames.length} 个移除的交易对`,
+        `✅ ${currentTime.toISOString()}: ${validRemovedSymbols.length} 个交易对仍符合条件，归类为真正的移除交易对`,
       );
 
-      // 获取这些移除交易对的当前时间点数据
+      // 获取这些有效的移除交易对的当前时间点数据
       const removedSymbolsData = await this.getRemovedSymbolsData(
-        removedSymbolNames,
+        validRemovedSymbols,
         currentTime,
       );
 
       return removedSymbolsData;
     } catch (error) {
       this.logger.warn(
-        `⚠️ 计算removedSymbols失败 (${currentTime.toISOString()}): ${error.message}`,
+        `⚠️ 检查移除交易对有效性失败: ${error.message}，使用原有逻辑`,
       );
-      return []; // 发生错误时返回空数组，不影响主流程
+      
+      // 如果检查失败，回退到原有逻辑
+      const removedSymbolsData = await this.getRemovedSymbolsData(
+        removedSymbolNames,
+        currentTime,
+      );
+
+      return removedSymbolsData;
     }
   }
 
