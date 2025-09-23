@@ -1734,22 +1734,40 @@ export class BinanceVolumeBacktestService {
         futuresSymbols,
       );
 
-      // 为每个排名项添加期货价格
-      rankings.forEach((ranking) => {
-        const futureSymbol = symbolToFutureSymbolMap[ranking.symbol];
-        if (futureSymbol) {
-          ranking.futurePriceAtTime = futuresPrices[futureSymbol] || undefined;
-        }
-      });
+      // 为每个排名项添加期货价格，并过滤掉没有对应期货合约的交易对
+      const validRankings: HourlyRankingItem[] = [];
 
-      const withFuturesCount = rankings.filter(
+      for (const ranking of rankings) {
+        const futureSymbol = symbolToFutureSymbolMap[ranking.symbol];
+        if (!futureSymbol) {
+          this.logger.warn(
+            `⚠️ ${ranking.symbol} 没有对应的期货合约，但却在rankings中出现了！这可能是缓存问题或过滤逻辑问题`,
+          );
+
+          // 自动清除缓存以解决过期数据问题
+          await this.invalidateStaleSymbolFilterCache(ranking.symbol);
+          continue;
+        }
+
+        ranking.futurePriceAtTime = futuresPrices[futureSymbol] || undefined;
+        validRankings.push(ranking);
+      }
+
+      const removedCount = rankings.length - validRankings.length;
+      if (removedCount > 0) {
+        this.logger.log(
+          `🗑️ 移除了 ${removedCount} 个没有期货合约的交易对`,
+        );
+      }
+
+      const withFuturesCount = validRankings.filter(
         (r) => r.futurePriceAtTime !== undefined,
       ).length;
       this.logger.debug(
-        `✅ 成功为 ${withFuturesCount}/${rankings.length} 个交易对添加期货价格`,
+        `✅ 成功为 ${withFuturesCount}/${validRankings.length} 个交易对添加期货价格`,
       );
 
-      return rankings;
+      return validRankings;
     } catch (error) {
       this.logger.warn(
         `⚠️ 添加期货价格失败: ${error.message}，继续使用现货价格`,
@@ -1797,13 +1815,6 @@ export class BinanceVolumeBacktestService {
       const futuresSymbol =
         await this.binanceService.mapToFuturesSymbol(symbol);
       if (!futuresSymbol) {
-        this.logger.warn(
-          `⚠️ ${symbol} 没有对应的期货合约，但却在rankings中出现了！这可能是缓存问题或过滤逻辑问题`,
-        );
-        
-        // 自动清除缓存以解决过期数据问题
-        await this.invalidateStaleSymbolFilterCache(symbol);
-        
         return [];
       }
 
