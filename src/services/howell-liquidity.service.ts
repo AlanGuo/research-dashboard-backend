@@ -8,7 +8,7 @@ import {
 export class HowellLiquidityService {
   // 存储表格中的数据
   private readonly liquidityData: HowellLiquidityDataPoint[] = [
-    // 月度数据（已修正）
+    // 月度数据(full)（已修正）
     {
       date: "2024-01",
       globalLiquidity: 170.28,
@@ -102,21 +102,21 @@ export class HowellLiquidityService {
     },
     {
       date: "2025-02",
-      globalLiquidity: 173.5,
+      globalLiquidity: 173.47,
       shadowMonetaryBase: 105.0,
       collateralMultiplier: 1.65,
       isRevised: true,
     },
     {
       date: "2025-03",
-      globalLiquidity: 175.53,
+      globalLiquidity: 176.16,
       shadowMonetaryBase: 106.05,
       collateralMultiplier: 1.66,
       isRevised: true,
     },
     {
       date: "2025-04",
-      globalLiquidity: 179.46,
+      globalLiquidity: 179.14,
       shadowMonetaryBase: 108.57,
       collateralMultiplier: 1.65,
       isRevised: true,
@@ -128,22 +128,64 @@ export class HowellLiquidityService {
       collateralMultiplier: 1.68,
       isRevised: true,
     },
+
+    // 周度数据（预估数据[flash]，不修正的）
     {
-      date: "2025-06",
-      globalLiquidity: 182.5,
-      shadowMonetaryBase: 109.73,
-      collateralMultiplier: 1.66,
-      isRevised: true,
+      date: "2025-06-16",
+      rawDate: "2025-06-13",
+      globalLiquidity: 179.68,
+      shadowMonetaryBase: 108.81,
+      collateralMultiplier: 1.65,
+      isRevised: false,
     },
     {
-      date: "2025-07",
-      globalLiquidity: 182.79,
+      date: "2025-06-23",
+      rawDate: "2025-06-20",
+      globalLiquidity: 180.13,
+      shadowMonetaryBase: 108.47,
+      collateralMultiplier: 1.66,
+      isRevised: false,
+    },
+    {
+      date: "2025-06-30",
+      rawDate: "2025-06-27",
+      globalLiquidity: 180.41,
+      shadowMonetaryBase: 109.73,
+      collateralMultiplier: 1.64,
+      isRevised: false,
+    },
+    {
+      date: "2025-07-07",
+      rawDate: "2025-07-04",
+      globalLiquidity: 180.07,
+      shadowMonetaryBase: 110.54,
+      collateralMultiplier: 1.63,
+      isRevised: false,
+    },
+    {
+      date: "2025-07-14",
+      rawDate: "2025-07-11",
+      globalLiquidity: 181.35,
+      shadowMonetaryBase: 109.7,
+      collateralMultiplier: 1.65,
+      isRevised: false,
+    },
+    {
+      date: "2025-07-21",
+      rawDate: "2025-07-18",
+      globalLiquidity: 182.25,
+      shadowMonetaryBase: 109.67,
+      collateralMultiplier: 1.66,
+      isRevised: false,
+    },
+    {
+      date: "2025-07-28",
+      rawDate: "2025-07-25",
+      globalLiquidity: 183.15,
       shadowMonetaryBase: 109.89,
       collateralMultiplier: 1.67,
-      isRevised: true,
+      isRevised: false,
     },
-
-    // 周度数据（可能修正）
     {
       date: "2025-08-04",
       rawDate: "2025-08-01",
@@ -158,6 +200,46 @@ export class HowellLiquidityService {
       globalLiquidity: 182.67,
       shadowMonetaryBase: 110.04,
       collateralMultiplier: 1.66,
+      isRevised: false,
+    },
+    {
+      date: "2025-08-18",
+      rawDate: "2025-08-15",
+      globalLiquidity: 183.04,
+      shadowMonetaryBase: 109.44,
+      collateralMultiplier: 1.67,
+      isRevised: false,
+    },
+    {
+      date: "2025-08-15",
+      rawDate: "2025-08-22",
+      globalLiquidity: 183.46,
+      shadowMonetaryBase: 109.84,
+      collateralMultiplier: 1.67,
+      isRevised: false,
+    },
+    {
+      date: "2025-09-02",
+      rawDate: "2025-08-29",
+      globalLiquidity: 184.19,
+      shadowMonetaryBase: 109.66,
+      collateralMultiplier: 1.68,
+      isRevised: false,
+    },
+    {
+      date: "2025-09-08",
+      rawDate: "2025-09-05",
+      globalLiquidity: 184.62,
+      shadowMonetaryBase: 109.57,
+      collateralMultiplier: 1.68,
+      isRevised: false,
+    },
+    {
+      date: "2025-09-15",
+      rawDate: "2025-09-12",
+      globalLiquidity: 184.87,
+      shadowMonetaryBase: 109.86,
+      collateralMultiplier: 1.68,
       isRevised: false,
     }
   ];
