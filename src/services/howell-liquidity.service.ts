@@ -123,10 +123,10 @@ export class HowellLiquidityService {
     },
     {
       date: "2025-05",
-      globalLiquidity: 181.08,
+      globalLiquidity: 180.98,
       shadowMonetaryBase: 107.76,
-      collateralMultiplier: 1.68,
-      isRevised: true,
+      collateralMultiplier: 1.66,
+      isRevised: false,
     },
     // 周度数据（预估数据[flash]，不修正的）
     {
